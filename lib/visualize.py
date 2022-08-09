@@ -27,15 +27,15 @@ rep_y_pos_map = {'LINE' : (-6, '#6ac0b7'),
                  'Retroposon' : (-34, '#2f7155')}
 
 
-def plot_breakpoints(bam_filename, rep_filename, chrom, leftbp, rightbp, padding=500):
+def plot_breakpoints(bam_filename, rep_filename, chrom, leftbp, rightbp, padding=500, collapse_ins=True):
     """ Plots coverage and alignments around breakpoints. """
     ### Load BAM file
     bam = pysam.AlignmentFile(bam_filename, 'rb')
 
     ### Compute alignment matrix
-    aln_matrix_left, aux_dict_left = compute_aln_matrix(bam, chrom, leftbp - 50, leftbp + 50)
-    aln_matrix_right, aux_dict_right = compute_aln_matrix(bam, chrom, rightbp - 50, rightbp + 50)
-    aln_matrix_left, aln_matrix_right = pad_alignment_matrices(aln_matrix_left, aln_matrix_right)
+    aln_matrix_left, aux_dict_left = compute_aln_matrix(bam, chrom, leftbp - 50, leftbp + 50, collapse_ins=collapse_ins)
+    aln_matrix_right, aux_dict_right = compute_aln_matrix(bam, chrom, rightbp - 50, rightbp + 50, collapse_ins=collapse_ins)
+    aln_matrix_left, aln_matrix_right = pad_alignment_matrices(aln_matrix_left, aln_matrix_right, collapse_ins=collapse_ins)
 
     ### Compute coverage
     cov, cov_minq = compute_cov_df(bam_filename, chrom, leftbp - padding, rightbp + padding)
