@@ -128,20 +128,9 @@ def acc_dot(aln_matrix, ax, labels):
     """ Calculates x and y positions for dotplot. """
 
     if len(labels) > 0:
-        # Generate colors for dotplot if labels are provided
-        colors = cm.get_cmap('Set1').colors
-
-        # Convert list of labels to list of indices for coloring
-        color_idx = []
-        used = dict()
-        i = 0
-        for label in labels:
-            if label not in used:
-                color_idx.append(i)
-                used[label] = i
-                i += 1
-            else:
-                color_idx.append(used[label])
+        # Color dict for haplotag
+        color_dict_hp = {'-1' : 'black', '1': 'blue', '2': 'red'}
+        
 
     # Plot dotplot
     for i in range(len(aln_matrix)):
@@ -162,11 +151,11 @@ def acc_dot(aln_matrix, ax, labels):
                 x_pos += 1
             elif aln_matrix[i][j] > 3:
                 x_pos += 1
-        ax.plot(all_x_pos, all_y_pos, alpha=1/len(aln_matrix)+0.1, linewidth=1, color=colors[color_idx[i]] if len(labels) > 0 else 'red')
+        ax.plot(all_x_pos, all_y_pos, alpha=1/len(aln_matrix)+0.1, linewidth=1, color=color_dict_hp[labels[i]] if len(labels) > 0 else 'red')
 
 
 
-def plot_dotplots(bam_filename, chrom, left_bp, right_bp, padding=100, color_by=''):
+def plot_dotplots(bam_filename, chrom, left_bp, right_bp, padding=100, color_by='', outfile=''):
     """ Computes alignment matrix and plots dotplot. """
     bam = pysam.AlignmentFile(bam_filename, 'rb')
     
@@ -193,5 +182,7 @@ def plot_dotplots(bam_filename, chrom, left_bp, right_bp, padding=100, color_by=
     ax.set_ylabel('Alignment Position')
     ax.set_xlabel('Reference Position')
     plt.title(chrom + ':' + str(left_bp) + '-' + str(right_bp))
-
-    plt.show()
+    if outfile == '':
+        plt.show()
+    else:
+        plt.savefig(outfile)
