@@ -35,7 +35,7 @@ def plot_breakpoints(bam_filename, rep_filename, chrom, leftbp, rightbp, padding
     ### Compute alignment matrix
     aln_matrix_left, aux_dict_left = compute_aln_matrix(bam, chrom, leftbp - 50, leftbp + 50, collapse_ins=collapse_ins)
     aln_matrix_right, aux_dict_right = compute_aln_matrix(bam, chrom, rightbp - 50, rightbp + 50, collapse_ins=collapse_ins)
-    aln_matrix_left, aln_matrix_right = pad_alignment_matrices(aln_matrix_left, aln_matrix_right, collapse_ins=collapse_ins)
+    aln_matrix_left, aln_matrix_right = pad_alignment_matrices(aln_matrix_left, aln_matrix_right)
 
     ### Compute coverage
     cov, cov_minq = compute_cov_df(bam_filename, chrom, leftbp - padding, rightbp + padding)
@@ -49,6 +49,7 @@ def plot_breakpoints(bam_filename, rep_filename, chrom, leftbp, rightbp, padding
 
     colors = ['white', 'lightgrey', '#b7954b', '#5066a2', '#f0b6a0', '#6ac0b7', '#df624c']
     fig = plt.figure(figsize=(22,10))
+    fig.patch.set_facecolor('white')
     gs = gridspec.GridSpec(2, 4, height_ratios=[1,3])
     gs.update(wspace=0.5)
     ax1 = plt.subplot(gs[0, 0:4])
@@ -77,7 +78,10 @@ def plot_breakpoints(bam_filename, rep_filename, chrom, leftbp, rightbp, padding
 
     ### Repeat track
     for i in range(len(rep_df)):
-        ax1.hlines(y=rep_y_pos_map[rep_df.loc[i, 'repClass']][0], xmin=rep_df.loc[i, 'genoStart'], xmax=rep_df.loc[i, 'genoEnd'], linewidth=4, color=rep_y_pos_map[rep_df.loc[i, 'repClass']][1])
+        try:
+            ax1.hlines(y=rep_y_pos_map[rep_df.loc[i, 'repClass']][0], xmin=rep_df.loc[i, 'genoStart'], xmax=rep_df.loc[i, 'genoEnd'], linewidth=4, color=rep_y_pos_map[rep_df.loc[i, 'repClass']][1])
+        except KeyError: # repeat type not in rep_y_pos_map
+            continue
 
     ### Left Breakpoint
     ax2.imshow(aln_matrix_left, cmap=ListedColormap(colors), vmin=-1, vmax=5)

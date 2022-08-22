@@ -19,7 +19,7 @@ def cigartuples_to_array(cigartuples):
 def compute_aln_matrix(bam, chrom, start, stop, collapse_ins=True, size=100):
     """ Computes alignment matrix consisting of CIGAR integers for a given region. """
     reads = []
-    for read in bam.fetch(chrom, start-5, stop+5):
+    for read in bam.fetch(chrom, start, stop):
         if not read.is_unmapped:
             reads.append(read)
 
@@ -72,7 +72,7 @@ def compute_aln_matrix(bam, chrom, start, stop, collapse_ins=True, size=100):
             end_idx_read = start_idx_read + size
             end_idx_aln = size
         
-        elif read_start < start and read_end < stop:
+        elif read_start < start and read_end <= stop:
             # Read is partially contained in region
             if collapse_ins:
                 start_idx_read = start - read_start
@@ -90,7 +90,7 @@ def compute_aln_matrix(bam, chrom, start, stop, collapse_ins=True, size=100):
             # Read is partially contained in region
             start_idx_read = 0
             start_idx_aln = read_start - start 
-            end_idx_read = start_idx_read + size - read_start - start 
+            end_idx_read = start_idx_read + size - (read_start - start) 
             end_idx_aln = size
 
         else:
@@ -101,8 +101,11 @@ def compute_aln_matrix(bam, chrom, start, stop, collapse_ins=True, size=100):
                 end_idx_read = len(cigararray)
                 end_idx_aln = start_idx_aln + len(cigararray)
             else:
-                end_idx_read = start_idx_read + size - read_start - start 
+                end_idx_read = start_idx_read + size - (read_start - start) 
                 end_idx_aln = size
+            if start_idx_aln < 0:
+                print(start_idx_aln)
+            
 
 
         if end_idx_aln > 0 and end_idx_read > 0:
@@ -110,7 +113,7 @@ def compute_aln_matrix(bam, chrom, start, stop, collapse_ins=True, size=100):
                 aln_matrix[idx, start_idx_aln:end_idx_aln] = cigararray[start_idx_read:end_idx_read]
             except: 
                 print(idx, read.query_name, start_idx_aln, end_idx_aln, start_idx_read, end_idx_read, read_start, read_end, start, stop, size, len(cigararray),  np.sum(cigararray == 1))
-    
+
     return aln_matrix, aux_dict
 
 
