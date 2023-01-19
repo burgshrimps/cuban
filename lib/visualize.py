@@ -27,7 +27,43 @@ rep_y_pos_map = {'LINE' : (-6, '#6ac0b7'),
                  'Retroposon' : (-34, '#2f7155')}
 
 
-def plot_breakpoints_single(bam_filename, rep_filename, chrom, leftbp, rightbp, padding=500, window=50, collapse_ins=True):
+def add_splitread_overlay(aux_dict, aln_matrix_left1, ax):
+
+    for idx in aux_dict['split_idx']:
+        try:
+            start = np.where(aln_matrix_left1[idx] >= 4)[0][0]
+            end = np.where(aln_matrix_left1[idx] >= 4)[0][-1]
+            ax.add_patch(mplpatches.Rectangle((start-0.5, idx - 0.5),end-start+1, 0.9, hatch='||', fill=False, snap=False, linewidth=0.5, edgecolor='black'))
+        except IndexError:
+            pass
+
+
+def add_disco_overlay(aux_dict, aln_matrix, ax, orient):
+
+    for idx in aux_dict['discordant_idx_' + orient]:
+        try:
+            start = np.where(aln_matrix[idx] == 0)[0][0]
+            end = np.where(aln_matrix[idx] == 0)[0][-1]
+            if orient == 'rr':
+                ax.add_patch(mplpatches.Rectangle((start-0.5, idx-0.5),end-start+1, 1, hatch='\\\\',fill=False, snap=False, linewidth=0.5, edgecolor='sandybrown', alpha=1))
+            elif orient == 'ff':
+                ax.add_patch(mplpatches.Rectangle((start-0.5, idx-0.5),end-start+1, 1, hatch='//',fill=False, snap=False, linewidth=0.5, edgecolor='cadetblue', alpha=1))
+        except IndexError:
+            pass
+
+
+def add_mapq_overlay(aux_dict, aln_matrix, ax):
+
+    for idx in aux_dict['low_mapq_idx']:
+        try:
+            start = np.where(aln_matrix[idx] >= 0)[0][0]
+            end = np.where(aln_matrix[idx] >= 0)[0][-1]
+            ax.add_patch(mplpatches.Rectangle((start-0.5, idx-0.5),end-start+1,0.9,fill=True, snap=False, linewidth=1, edgecolor='none', facecolor='grey', alpha=0.5))
+        except IndexError:
+            pass
+
+
+def plot_breakpoints_ill(bam_filename, rep_filename, chrom, leftbp, rightbp, padding=500, window=50, collapse_ins=True, title=None, outfile=None):
     """ Plots coverage and alignments around breakpoints. """
     ### Load BAM file
     bam = pysam.AlignmentFile(bam_filename, 'rb')
@@ -54,14 +90,12 @@ def plot_breakpoints_single(bam_filename, rep_filename, chrom, leftbp, rightbp, 
     ax1 = plt.subplot(gs[0, 0:4])
     ax2 = plt.subplot(gs[1, :2])
     ax3 = plt.subplot(gs[1, 2:])
-    ax1.grid(False)
-    ax2.grid(False)
-    ax3.grid(False)
+    axs = [ax1, ax2, ax3]
+    for ax in axs:
+        ax.grid(False)
+        ax.set_facecolor('white')
     ax2.axes.yaxis.set_visible(False)
     ax3.axes.yaxis.set_visible(False)
-    ax1.set_facecolor('white')
-    ax2.set_facecolor('white')
-    ax3.set_facecolor('white')
     plt.rcParams["font.weight"] = "bold"
     plt.rcParams["axes.labelweight"] = "bold"
 
@@ -85,60 +119,40 @@ def plot_breakpoints_single(bam_filename, rep_filename, chrom, leftbp, rightbp, 
     ### Left Breakpoint
     ax2.imshow(aln_matrix_left, cmap=ListedColormap(colors), vmin=-1, vmax=5)
     ax2.axvline(x=window, color='black', linewidth=1, linestyle='--')
-    for idx in aux_dict_left['split_idx']:
-        try:
-            start = np.where(aln_matrix_left[idx] >= 4)[0][0]
-            end = np.where(aln_matrix_left[idx] >= 4)[0][-1]
-            ax2.add_patch(mplpatches.Rectangle((start, idx - 0.5),end-start,1,hatch='\\',fill=False,snap=False, linewidth=1, edgecolor='black'))
-        except IndexError:
-            pass
-    for idx in aux_dict_left['low_mapq_idx']:
-        try:
-            start = np.where(aln_matrix_left[idx] >= 0)[0][0]
-            end = np.where(aln_matrix_left[idx] >= 0)[0][-1]
-            ax2.add_patch(mplpatches.Rectangle((start-0.5, idx - 0.5),end-start+1,1,hatch='\\',fill=True,snap=False, linewidth=1, edgecolor='none', facecolor='grey', alpha=0.5))
-        except IndexError:
-            pass
-
-    for idx in aux_dict_left['discordant_idx']:
-        try:
-            start = np.where(aln_matrix_left[idx] >= 0)[0][0]
-            end = np.where(aln_matrix_left[idx] >= 0)[0][-1]
-            ax2.add_patch(mplpatches.Rectangle((start-0.5, idx - 0.5),end-start+1,1,hatch='\\',fill=True,snap=False, linewidth=1, edgecolor='none', facecolor='red', alpha=1))
-        except IndexError:
-            pass
-    #ax2.set_xticks([0, 25, 50, 75, 100], labels=['-50', '-25', '0', '25', '50'])
+    add_mapq_overlay(aux_dict_left, aln_matrix_left, ax2)
+    add_disco_overlay(aux_dict_left, aln_matrix_left, ax2, 'rr')
+    add_disco_overlay(aux_dict_left, aln_matrix_left, ax2, 'ff')
+    add_splitread_overlay(aux_dict_left, aln_matrix_left, ax2)
+    ax2.set_xticks([0, window/2, window, window*1.5, 2*window], labels=[str(-int(window)), str(-int(window/2)), '0', str(int(window/2)), str(int(window))])
 
     ### Right Breakpoint
     im = ax3.imshow(aln_matrix_right, cmap=ListedColormap(colors), vmin=-1, vmax=5)
     ax3.axvline(x=window, color='black', linewidth=1, linestyle='--')
-    for idx in aux_dict_right['split_idx']:
-        try:
-            start = np.where(aln_matrix_right[idx] >= 4)[0][0]
-            end = np.where(aln_matrix_right[idx] >= 4)[0][-1]
-            ax3.add_patch(mplpatches.Rectangle((start, idx - 0.5),end-start,1,hatch='\\',fill=False,snap=False, linewidth=1, edgecolor='black'))
-        except IndexError:
-            pass
-    for idx in aux_dict_right['low_mapq_idx']:
-        try:
-            start = np.where(aln_matrix_right[idx] >= 0)[0][0]
-            end = np.where(aln_matrix_right[idx] >= 0)[0][-1]
-            ax3.add_patch(mplpatches.Rectangle((start-0.5, idx - 0.5),end-start+1,1,hatch='\\',fill=True,snap=False, linewidth=1, edgecolor='none', facecolor='grey', alpha=0.5))
-        except IndexError:
-            pass
-    #ax3.set_xticks([0, 25, 50, 75, 100], labels=['-50', '-25', '0', '25', '50'])
+    add_mapq_overlay(aux_dict_right, aln_matrix_right, ax3)
+    add_disco_overlay(aux_dict_right, aln_matrix_right, ax3, 'rr')
+    add_disco_overlay(aux_dict_right, aln_matrix_right, ax3, 'ff')
+    add_splitread_overlay(aux_dict_right, aln_matrix_right, ax3)
+    ax3.set_xticks([0, window/2, window, window*1.5, 2*window], labels=[str(-int(window)), str(-int(window/2)), '0', str(int(window/2)), str(int(window))])
+
+    ### Colorbar
     cbar = fig.colorbar(im, cmap=ListedColormap(colors[1:]), ax=[ax1, ax2, ax3], shrink=0.5, ticks=[0.3,1.1,2,2.8,3.7,4.5])
     labels = ['M', 'I', 'D', 'N', 'S', 'H']
     cbar.ax.set_yticklabels(labels)
 
-    plt.show()
+    ### Output
+    if title != None:
+        ax1.set_title(title)
+    if outfile != None:
+        plt.savefig(outfile, dpi=300, bbox_inches='tight')
+    else:
+        plt.show()
 
 
-def plot_breakpoints_double(bam_filename1, bam_filename2, rep_filename, chrom, leftbp, rightbp, padding=500, window=50, collapse_ins=True, title=None, outfile=None):
+def plot_breakpoints_ill_pb(bam_filename_ill, bam_filename_pb, rep_filename, chrom, leftbp, rightbp, padding=500, window=50, collapse_ins=True, title=None, outfile=None):
     """ Plots coverage and alignments around breakpoints. """
     ### Load BAM file
-    bam1 = pysam.AlignmentFile(bam_filename1, 'rb')
-    bam2 = pysam.AlignmentFile(bam_filename2, 'rb')
+    bam1 = pysam.AlignmentFile(bam_filename_ill, 'rb')
+    bam2 = pysam.AlignmentFile(bam_filename_pb, 'rb')
 
     ### Compute alignment matrix
     aln_matrix_left1, aux_dict_left1 = compute_aln_matrix(bam1, chrom, leftbp - window, leftbp + window, collapse_ins=collapse_ins, size=2*window)
@@ -150,8 +164,8 @@ def plot_breakpoints_double(bam_filename1, bam_filename2, rep_filename, chrom, l
     aln_matrix_left2, aln_matrix_right2 = pad_alignment_matrices(aln_matrix_left2, aln_matrix_right2)
 
     ### Compute coverage
-    cov1, cov_minq1 = compute_cov_df(bam_filename1, chrom, leftbp - padding, rightbp + padding)
-    cov2, cov_minq2 = compute_cov_df(bam_filename2, chrom, leftbp - padding, rightbp + padding)
+    cov1, cov_minq1 = compute_cov_df(bam_filename_ill, chrom, leftbp - padding, rightbp + padding)
+    cov2, cov_minq2 = compute_cov_df(bam_filename_pb, chrom, leftbp - padding, rightbp + padding)
 
     ### Compute repeat overlap
     rep_df = compute_rep_df(rep_filename, chrom, leftbp - 5000, rightbp + 5000)
@@ -170,22 +184,13 @@ def plot_breakpoints_double(bam_filename1, bam_filename2, rep_filename, chrom, l
     ax4 = plt.subplot(gs[2, 0:4])
     ax5 = plt.subplot(gs[3, :2])
     ax6 = plt.subplot(gs[3, 2:])
-    ax1.grid(False)
-    ax2.grid(False)
-    ax3.grid(False)
-    ax4.grid(False)
-    ax5.grid(False)
-    ax6.grid(False)
-    ax2.axes.yaxis.set_visible(False)
-    ax3.axes.yaxis.set_visible(False)
-    ax5.axes.yaxis.set_visible(False)
-    ax6.axes.yaxis.set_visible(False)
-    ax1.set_facecolor('white')
-    ax2.set_facecolor('white')
-    ax3.set_facecolor('white')
-    ax4.set_facecolor('white')
-    ax5.set_facecolor('white')
-    ax6.set_facecolor('white')
+    axs = [ax1, ax2, ax3, ax4, ax5, ax6]
+    for ax in axs:
+        ax.grid(False)
+        ax.set_facecolor('white')
+    for ax in [ax2, ax3, ax5, ax6]:
+        ax.axes.yaxis.set_visible(False)
+
     plt.rcParams["font.weight"] = "bold"
     plt.rcParams["axes.labelweight"] = "bold"
 
@@ -229,128 +234,47 @@ def plot_breakpoints_double(bam_filename1, bam_filename2, rep_filename, chrom, l
     ### Left Breakpoint 1
     ax2.imshow(aln_matrix_left1, cmap=ListedColormap(colors), vmin=-1, vmax=5)
     ax2.axvline(x=window, color='black', linewidth=1, linestyle='--')
-    for idx in aux_dict_left1['low_mapq_idx']:
-        try:
-            start = np.where(aln_matrix_left1[idx] >= 0)[0][0]
-            end = np.where(aln_matrix_left1[idx] >= 0)[0][-1]
-            ax2.add_patch(mplpatches.Rectangle((start-0.5, idx-0.5),end-start+1,0.9,fill=True, snap=False, linewidth=1, edgecolor='none', facecolor='grey', alpha=0.5))
-        except IndexError:
-            pass
-
-    for idx in aux_dict_left1['discordant_idx_ff']:
-        try:
-            start = np.where(aln_matrix_left1[idx] == 0)[0][0]
-            end = np.where(aln_matrix_left1[idx] == 0)[0][-1]
-            ax2.add_patch(mplpatches.Rectangle((start-0.5, idx-0.5),end-start+1, 1, hatch='//',fill=False, snap=False, linewidth=0.5, edgecolor='cadetblue', alpha=1))
-        except IndexError:
-            pass
-
-    for idx in aux_dict_left1['discordant_idx_rr']:
-        try:
-            start = np.where(aln_matrix_left1[idx] == 0)[0][0]
-            end = np.where(aln_matrix_left1[idx] == 0)[0][-1]
-            ax2.add_patch(mplpatches.Rectangle((start-0.5, idx-0.5),end-start+1, 1, hatch='\\\\',fill=False, snap=False, linewidth=0.5, edgecolor='sandybrown', alpha=1))
-        except IndexError:
-            pass
-
-    for idx in aux_dict_left1['split_idx']:
-        try:
-            start = np.where(aln_matrix_left1[idx] >= 4)[0][0]
-            end = np.where(aln_matrix_left1[idx] >= 4)[0][-1]
-            ax2.add_patch(mplpatches.Rectangle((start-0.5, idx - 0.5),end-start+1,0.9,hatch='||',fill=False,snap=False, linewidth=0.5, edgecolor='black'))
-        except IndexError:
-            pass
-
-    ax2.set_xticks([0, window/2, window, window*1.5, 2*window], labels=[str(-int(window)), str(-int(window/2)), '0', str(int(window*1.5)), str(int(window))])
+    add_mapq_overlay(aux_dict_left1, aln_matrix_left1, ax2)
+    add_disco_overlay(aux_dict_left1, aln_matrix_left1, ax2, 'rr')
+    add_disco_overlay(aux_dict_left1, aln_matrix_left1, ax2, 'ff')
+    add_splitread_overlay(aux_dict_left1, aln_matrix_left1, ax2)
+    ax2.set_xticks([0, window/2, window, window*1.5, 2*window], labels=[str(-int(window)), str(-int(window/2)), '0', str(int(window/2)), str(int(window))])
 
     ### Right Breakpoint 1
     im = ax3.imshow(aln_matrix_right1, cmap=ListedColormap(colors), vmin=-1, vmax=5)
     ax3.axvline(x=window, color='black', linewidth=1, linestyle='--')
-    for idx in aux_dict_right1['low_mapq_idx']:
-        try:
-            start = np.where(aln_matrix_right1[idx] >= 0)[0][0]
-            end = np.where(aln_matrix_right1[idx] >= 0)[0][-1]
-            ax3.add_patch(mplpatches.Rectangle((start-0.5, idx-0.5),end-start+1,0.9,fill=True, snap=False, linewidth=1, edgecolor='none', facecolor='grey', alpha=0.5))
-        except IndexError:
-            pass
-
-    for idx in aux_dict_right1['discordant_idx_ff']:
-        try:
-            start = np.where(aln_matrix_right1[idx] == 0)[0][0]
-            end = np.where(aln_matrix_right1[idx] == 0)[0][-1]
-            ax3.add_patch(mplpatches.Rectangle((start-0.5, idx-0.5),end-start+1, 1, hatch='//',fill=False, snap=False, linewidth=0.5, edgecolor='cadetblue', alpha=1))
-        except IndexError:
-            pass
-
-    for idx in aux_dict_right1['discordant_idx_rr']:
-        try:
-            start = np.where(aln_matrix_right1[idx] == 0)[0][0]
-            end = np.where(aln_matrix_right1[idx] == 0)[0][-1]
-            ax3.add_patch(mplpatches.Rectangle((start-0.5, idx-0.5),end-start+1, 1, hatch='\\\\',fill=False, snap=False, linewidth=0.5, edgecolor='sandybrown', alpha=1))
-        except IndexError:
-            pass
-
-    for idx in aux_dict_right1['split_idx']:
-        try:
-            start = np.where(aln_matrix_right1[idx] >= 4)[0][0]
-            end = np.where(aln_matrix_right1[idx] >= 4)[0][-1]
-            ax3.add_patch(mplpatches.Rectangle((start-0.5, idx - 0.5),end-start+1,0.9,hatch='||',fill=False,snap=False, linewidth=0.5, edgecolor='black'))
-        except IndexError:
-            pass
-
-    ax3.set_xticks([0, window/2, window, window*1.5, 2*window], labels=[str(-int(window)), str(-int(window/2)), '0', str(int(window*1.5)), str(int(window))])
-
+    add_mapq_overlay(aux_dict_right1, aln_matrix_right1, ax3)
+    add_disco_overlay(aux_dict_right1, aln_matrix_right1, ax3, 'rr')
+    add_disco_overlay(aux_dict_right1, aln_matrix_right1, ax3, 'ff')
+    add_splitread_overlay(aux_dict_right1, aln_matrix_right1, ax3)
+    ax3.set_xticks([0, window/2, window, window*1.5, 2*window], labels=[str(-int(window)), str(-int(window/2)), '0', str(int(window/2)), str(int(window))])
 
     ### Left Breakpoint 2
     ax5.imshow(aln_matrix_left2, cmap=ListedColormap(colors), vmin=-1, vmax=5)
     ax5.axvline(x=window, color='black', linewidth=1, linestyle='--')
-    for idx in aux_dict_left2['split_idx']:
-        try:
-            start = np.where(aln_matrix_left2[idx] >= 4)[0][0]
-            end = np.where(aln_matrix_left2[idx] >= 4)[0][-1]
-            ax5.add_patch(mplpatches.Rectangle((start, idx - 0.5),end-start,1,hatch='\\',fill=False,snap=False, linewidth=1, edgecolor='black'))
-        except IndexError:
-            pass
-    for idx in aux_dict_left2['low_mapq_idx']:
-        try:
-            start = np.where(aln_matrix_left2[idx] >= 0)[0][0]
-            end = np.where(aln_matrix_left2[idx] >= 0)[0][-1]
-            ax5.add_patch(mplpatches.Rectangle((start-0.5, idx - 0.5),end-start+1,1,hatch='\\',fill=True,snap=False, linewidth=1, edgecolor='none', facecolor='grey', alpha=0.5))
-        except IndexError:
-            pass
-    ax5.set_xticks([0, window/2, window, window*1.5, 2*window], labels=[str(-int(window)), str(-int(window/2)), '0', str(int(window*1.5)), str(int(window))])
-
+    add_mapq_overlay(aux_dict_left2, aln_matrix_left2, ax5)
+    add_splitread_overlay(aux_dict_left2, aln_matrix_left2, ax5)
+    ax5.set_xticks([0, window/2, window, window*1.5, 2*window], labels=[str(-int(window)), str(-int(window/2)), '0', str(int(window/2)), str(int(window))])
 
     ### Right Breakpoint 2
     im = ax6.imshow(aln_matrix_right2, cmap=ListedColormap(colors), vmin=-1, vmax=5)
     ax6.axvline(x=window, color='black', linewidth=1, linestyle='--')
-    for idx in aux_dict_right2['split_idx']:
-        try:
-            start = np.where(aln_matrix_right2[idx] >= 4)[0][0]
-            end = np.where(aln_matrix_right2[idx] >= 4)[0][-1]
-            ax6.add_patch(mplpatches.Rectangle((start, idx - 0.5),end-start,1,hatch='\\',fill=False,snap=False, linewidth=1, edgecolor='black'))
-        except IndexError:
-            pass
-    for idx in aux_dict_right2['low_mapq_idx']:
-        try:
-            start = np.where(aln_matrix_right2[idx] >= 0)[0][0]
-            end = np.where(aln_matrix_right2[idx] >= 0)[0][-1]
-            ax6.add_patch(mplpatches.Rectangle((start-0.5, idx - 0.5),end-start+1,1,hatch='\\',fill=True,snap=False, linewidth=1, edgecolor='none', facecolor='grey', alpha=0.5))
-        except IndexError:
-            pass
-    ax6.set_xticks([0, window/2, window, window*1.5, 2*window], labels=[str(-int(window)), str(-int(window/2)), '0', str(int(window*1.5)), str(int(window))])
+    add_mapq_overlay(aux_dict_right2, aln_matrix_right2, ax6)
+    add_splitread_overlay(aux_dict_right2, aln_matrix_right2, ax6)
+    ax6.set_xticks([0, window/2, window, window*1.5, 2*window], labels=[str(-int(window)), str(-int(window/2)), '0', str(int(window/2)), str(int(window))])
 
-    
+    ### Colorbar
     cbar = fig.colorbar(im, cmap=ListedColormap(colors[1:]), ax=[ax1, ax2, ax3, ax4, ax5, ax6], shrink=0.5, ticks=[0.3,1.1,2,2.8,3.7,4.5])
     labels = ['M', 'I', 'D', 'N', 'S', 'H']
     cbar.ax.set_yticklabels(labels)
+
+    ### Output
     if title != None:
         ax1.set_title(title)
     if outfile != None:
         plt.savefig(outfile, dpi=300, bbox_inches='tight')
     else:
         plt.show()
-
 
 
 def acc_dot(aln_matrix, ax, labels):
@@ -381,7 +305,6 @@ def acc_dot(aln_matrix, ax, labels):
             elif aln_matrix[i][j] > 3:
                 x_pos += 1
         ax.plot(all_x_pos, all_y_pos, alpha=1/len(aln_matrix)+0.1, linewidth=1, color=color_dict_hp[labels[i]] if len(labels) > 0 else 'red')
-
 
 
 def plot_dotplots(bam_filename, chrom, left_bp, right_bp, padding=100, color_by='', outfile=''):

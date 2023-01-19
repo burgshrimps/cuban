@@ -162,3 +162,13 @@ def get_read_by_name(bam, chrom, start, stop, read_name):
         if read.query_name == read_name:
             return read
     return None
+
+def add_comma_to_pos(pos):
+    """ Adds comma to position. """
+    pos = str(pos)
+    newstr = ''
+    for i in range(len(pos)):
+        newstr = pos[::-1][i] + newstr
+        if i % 3 == 2:
+            newstr = ',' + newstr
+    return newstr
