@@ -99,6 +99,14 @@ def plot_breakpoints_single(bam_filename, rep_filename, chrom, leftbp, rightbp, 
             ax2.add_patch(mplpatches.Rectangle((start-0.5, idx - 0.5),end-start+1,1,hatch='\\',fill=True,snap=False, linewidth=1, edgecolor='none', facecolor='grey', alpha=0.5))
         except IndexError:
             pass
+
+    for idx in aux_dict_left['discordant_idx']:
+        try:
+            start = np.where(aln_matrix_left[idx] >= 0)[0][0]
+            end = np.where(aln_matrix_left[idx] >= 0)[0][-1]
+            ax2.add_patch(mplpatches.Rectangle((start-0.5, idx - 0.5),end-start+1,1,hatch='\\',fill=True,snap=False, linewidth=1, edgecolor='none', facecolor='red', alpha=1))
+        except IndexError:
+            pass
     #ax2.set_xticks([0, 25, 50, 75, 100], labels=['-50', '-25', '0', '25', '50'])
 
     ### Right Breakpoint
@@ -215,43 +223,81 @@ def plot_breakpoints_double(bam_filename1, bam_filename2, rep_filename, chrom, l
             ax4.hlines(y=rep_y_pos_map[rep_df.loc[i, 'repClass']][0], xmin=rep_df.loc[i, 'genoStart'], xmax=rep_df.loc[i, 'genoEnd'], linewidth=4, color=rep_y_pos_map[rep_df.loc[i, 'repClass']][1])
         except KeyError: # repeat type not in rep_y_pos_map
             continue
+    
+    plt.rcParams['hatch.linewidth'] = 0.5
 
     ### Left Breakpoint 1
     ax2.imshow(aln_matrix_left1, cmap=ListedColormap(colors), vmin=-1, vmax=5)
     ax2.axvline(x=window, color='black', linewidth=1, linestyle='--')
-    for idx in aux_dict_left1['split_idx']:
-        try:
-            start = np.where(aln_matrix_left1[idx] >= 4)[0][0]
-            end = np.where(aln_matrix_left1[idx] >= 4)[0][-1]
-            ax2.add_patch(mplpatches.Rectangle((start, idx - 0.5),end-start,1,hatch='\\',fill=False,snap=False, linewidth=1, edgecolor='black'))
-        except IndexError:
-            pass
     for idx in aux_dict_left1['low_mapq_idx']:
         try:
             start = np.where(aln_matrix_left1[idx] >= 0)[0][0]
             end = np.where(aln_matrix_left1[idx] >= 0)[0][-1]
-            ax2.add_patch(mplpatches.Rectangle((start-0.5, idx - 0.5),end-start+1,1,hatch='\\',fill=True,snap=False, linewidth=1, edgecolor='none', facecolor='grey', alpha=0.5))
+            ax2.add_patch(mplpatches.Rectangle((start-0.5, idx-0.5),end-start+1,0.9,fill=True, snap=False, linewidth=1, edgecolor='none', facecolor='grey', alpha=0.5))
         except IndexError:
             pass
+
+    for idx in aux_dict_left1['discordant_idx_ff']:
+        try:
+            start = np.where(aln_matrix_left1[idx] == 0)[0][0]
+            end = np.where(aln_matrix_left1[idx] == 0)[0][-1]
+            ax2.add_patch(mplpatches.Rectangle((start-0.5, idx-0.5),end-start+1, 1, hatch='//',fill=False, snap=False, linewidth=0.5, edgecolor='cadetblue', alpha=1))
+        except IndexError:
+            pass
+
+    for idx in aux_dict_left1['discordant_idx_rr']:
+        try:
+            start = np.where(aln_matrix_left1[idx] == 0)[0][0]
+            end = np.where(aln_matrix_left1[idx] == 0)[0][-1]
+            ax2.add_patch(mplpatches.Rectangle((start-0.5, idx-0.5),end-start+1, 1, hatch='\\\\',fill=False, snap=False, linewidth=0.5, edgecolor='sandybrown', alpha=1))
+        except IndexError:
+            pass
+
+    for idx in aux_dict_left1['split_idx']:
+        try:
+            start = np.where(aln_matrix_left1[idx] >= 4)[0][0]
+            end = np.where(aln_matrix_left1[idx] >= 4)[0][-1]
+            ax2.add_patch(mplpatches.Rectangle((start-0.5, idx - 0.5),end-start+1,0.9,hatch='||',fill=False,snap=False, linewidth=0.5, edgecolor='black'))
+        except IndexError:
+            pass
+
     ax2.set_xticks([0, window/2, window, window*1.5, 2*window], labels=[str(-int(window)), str(-int(window/2)), '0', str(int(window*1.5)), str(int(window))])
 
     ### Right Breakpoint 1
     im = ax3.imshow(aln_matrix_right1, cmap=ListedColormap(colors), vmin=-1, vmax=5)
     ax3.axvline(x=window, color='black', linewidth=1, linestyle='--')
-    for idx in aux_dict_right1['split_idx']:
-        try:
-            start = np.where(aln_matrix_right1[idx] >= 4)[0][0]
-            end = np.where(aln_matrix_right1[idx] >= 4)[0][-1]
-            ax3.add_patch(mplpatches.Rectangle((start, idx - 0.5),end-start,1,hatch='\\',fill=False,snap=False, linewidth=1, edgecolor='black'))
-        except IndexError:
-            pass
     for idx in aux_dict_right1['low_mapq_idx']:
         try:
             start = np.where(aln_matrix_right1[idx] >= 0)[0][0]
             end = np.where(aln_matrix_right1[idx] >= 0)[0][-1]
-            ax3.add_patch(mplpatches.Rectangle((start-0.5, idx - 0.5),end-start+1,1,hatch='\\',fill=True,snap=False, linewidth=1, edgecolor='none', facecolor='grey', alpha=0.5))
+            ax3.add_patch(mplpatches.Rectangle((start-0.5, idx-0.5),end-start+1,0.9,fill=True, snap=False, linewidth=1, edgecolor='none', facecolor='grey', alpha=0.5))
         except IndexError:
             pass
+
+    for idx in aux_dict_right1['discordant_idx_ff']:
+        try:
+            start = np.where(aln_matrix_right1[idx] == 0)[0][0]
+            end = np.where(aln_matrix_right1[idx] == 0)[0][-1]
+            ax3.add_patch(mplpatches.Rectangle((start-0.5, idx-0.5),end-start+1, 1, hatch='//',fill=False, snap=False, linewidth=0.5, edgecolor='cadetblue', alpha=1))
+        except IndexError:
+            pass
+
+    for idx in aux_dict_right1['discordant_idx_rr']:
+        try:
+            start = np.where(aln_matrix_right1[idx] == 0)[0][0]
+            end = np.where(aln_matrix_right1[idx] == 0)[0][-1]
+            ax3.add_patch(mplpatches.Rectangle((start-0.5, idx-0.5),end-start+1, 1, hatch='\\\\',fill=False, snap=False, linewidth=0.5, edgecolor='sandybrown', alpha=1))
+        except IndexError:
+            pass
+
+    for idx in aux_dict_right1['split_idx']:
+        try:
+            start = np.where(aln_matrix_right1[idx] >= 4)[0][0]
+            end = np.where(aln_matrix_right1[idx] >= 4)[0][-1]
+            ax3.add_patch(mplpatches.Rectangle((start-0.5, idx - 0.5),end-start+1,0.9,hatch='||',fill=False,snap=False, linewidth=0.5, edgecolor='black'))
+        except IndexError:
+            pass
+
     ax3.set_xticks([0, window/2, window, window*1.5, 2*window], labels=[str(-int(window)), str(-int(window/2)), '0', str(int(window*1.5)), str(int(window))])
 
 
@@ -301,7 +347,7 @@ def plot_breakpoints_double(bam_filename1, bam_filename2, rep_filename, chrom, l
     if title != None:
         ax1.set_title(title)
     if outfile != None:
-        plt.savefig(outfile)
+        plt.savefig(outfile, dpi=300, bbox_inches='tight')
     else:
         plt.show()
 

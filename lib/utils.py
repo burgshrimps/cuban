@@ -27,7 +27,9 @@ def compute_aln_matrix(bam, chrom, start, stop, collapse_ins=True, size=100):
     aux_dict = {'split_idx' : [],
                 'low_mapq_idx' : [],
                 'haplotag_idx': [],
-                'name' : []}
+                'name' : [],
+                'discordant_idx_ff': [], 
+                'discordant_idx_rr': []}
 
     for idx, read in enumerate(reads):
         aux_dict['name'].append(read.query_name)
@@ -39,6 +41,10 @@ def compute_aln_matrix(bam, chrom, start, stop, collapse_ins=True, size=100):
             aux_dict['haplotag_idx'].append(read.get_tag('HP'))
         else:
             aux_dict['haplotag_idx'].append(-1)
+        if read.is_reverse and read.mate_is_reverse:
+            aux_dict['discordant_idx_rr'].append(idx)
+        if not read.is_reverse and not read.mate_is_reverse:
+            aux_dict['discordant_idx_ff'].append(idx)
             
 
         cigararray = cigartuples_to_array(read.cigartuples)
