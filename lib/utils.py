@@ -21,7 +21,8 @@ def compute_aln_matrix(bam, chrom, start, stop, collapse_ins=True, size=100):
     reads = []
     for read in bam.fetch(chrom, start, stop):
         if not read.is_unmapped:
-            reads.append(read)
+            if not read.is_secondary:
+                reads.append(read)
 
     aln_matrix = -1 * np.ones((len(reads), size))
     aux_dict = {'split_idx' : [],
@@ -41,10 +42,11 @@ def compute_aln_matrix(bam, chrom, start, stop, collapse_ins=True, size=100):
             aux_dict['haplotag_idx'].append(read.get_tag('HP'))
         else:
             aux_dict['haplotag_idx'].append(-1)
-        if read.is_reverse and read.mate_is_reverse:
-            aux_dict['discordant_idx_rr'].append(idx)
-        if not read.is_reverse and not read.mate_is_reverse:
-            aux_dict['discordant_idx_ff'].append(idx)
+        if not read.mate_is_unmapped:
+            if read.is_reverse and read.mate_is_reverse:
+                aux_dict['discordant_idx_rr'].append(idx)
+            if not read.is_reverse and not read.mate_is_reverse:
+                aux_dict['discordant_idx_ff'].append(idx)
             
 
         cigararray = cigartuples_to_array(read.cigartuples)

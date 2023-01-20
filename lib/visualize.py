@@ -39,7 +39,7 @@ def add_splitread_overlay(aux_dict, aln_matrix_left1, ax):
 
 
 def add_disco_overlay(aux_dict, aln_matrix, ax, orient):
-
+    
     for idx in aux_dict['discordant_idx_' + orient]:
         try:
             start = np.where(aln_matrix[idx] == 0)[0][0]
