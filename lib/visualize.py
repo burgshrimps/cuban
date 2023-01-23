@@ -163,12 +163,20 @@ def plot_breakpoints_ill_pb(bam_filename_ill, bam_filename_pb, rep_filename, chr
     aln_matrix_right2, aux_dict_right2 = compute_aln_matrix(bam2, chrom, rightbp - window, rightbp + window, collapse_ins=collapse_ins, size=2*window)
     aln_matrix_left2, aln_matrix_right2 = pad_alignment_matrices(aln_matrix_left2, aln_matrix_right2)
 
+    ### Do not compute coverage if SV too big
+    if rightbp - leftbp < 100000:
+        compute_cov = True
+    else:
+        compute_cov = False
+
     ### Compute coverage
-    cov1, cov_minq1 = compute_cov_df(bam_filename_ill, chrom, leftbp - padding, rightbp + padding)
-    cov2, cov_minq2 = compute_cov_df(bam_filename_pb, chrom, leftbp - padding, rightbp + padding)
+    if compute_cov:
+        cov1, cov_minq1 = compute_cov_df(bam_filename_ill, chrom, leftbp - padding, rightbp + padding)
+        cov2, cov_minq2 = compute_cov_df(bam_filename_pb, chrom, leftbp - padding, rightbp + padding)
 
     ### Compute repeat overlap
-    rep_df = compute_rep_df(rep_filename, chrom, leftbp - 5000, rightbp + 5000)
+    if compute_cov:
+        rep_df = compute_rep_df(rep_filename, chrom, leftbp - 5000, rightbp + 5000)
 
     ### Plot options
     plt.rcParams["font.weight"] = "bold"
@@ -194,40 +202,41 @@ def plot_breakpoints_ill_pb(bam_filename_ill, bam_filename_pb, rep_filename, chr
     plt.rcParams["font.weight"] = "bold"
     plt.rcParams["axes.labelweight"] = "bold"
 
-    ### Coverage 1
-    ax1.plot(cov_minq1[1], cov_minq1[2], color='#df624c', fillstyle='bottom')
-    ax1.plot(cov1[1], cov1[2], color='grey', fillstyle='bottom')
-    ax1.fill_between(cov1[1], cov1[2], color="grey", alpha=0.2)
-    ax1.axvline(x=500, color='black', linewidth=1, linestyle='--')
-    ax1.axvline(x=cov1.iloc[-1, 1]-500, color='black', linewidth=1, linestyle='--')
-    ax1.set_ylim(bottom=-36)
-    ax1.set_xlim(left=0, right=cov1.iloc[-1, 1])
-    ax1.set_yticks([0, 20, 40, 60], labels=['0', '20', '40', '60'])
+    if compute_cov:
+        ### Coverage 1
+        ax1.plot(cov_minq1[1], cov_minq1[2], color='#df624c', fillstyle='bottom')
+        ax1.plot(cov1[1], cov1[2], color='grey', fillstyle='bottom')
+        ax1.fill_between(cov1[1], cov1[2], color="grey", alpha=0.2)
+        ax1.axvline(x=500, color='black', linewidth=1, linestyle='--')
+        ax1.axvline(x=cov1.iloc[-1, 1]-500, color='black', linewidth=1, linestyle='--')
+        ax1.set_ylim(bottom=-36)
+        ax1.set_xlim(left=0, right=cov1.iloc[-1, 1])
+        ax1.set_yticks([0, 20, 40, 60], labels=['0', '20', '40', '60'])
 
-    ### Repeat track 1
-    for i in range(len(rep_df)):
-        try:
-            ax1.hlines(y=rep_y_pos_map[rep_df.loc[i, 'repClass']][0], xmin=rep_df.loc[i, 'genoStart'], xmax=rep_df.loc[i, 'genoEnd'], linewidth=4, color=rep_y_pos_map[rep_df.loc[i, 'repClass']][1])
-        except KeyError: # repeat type not in rep_y_pos_map
-            continue
-    
-    ### Coverage 2
-    ax4.plot(cov_minq2[1], cov_minq2[2], color='#df624c', fillstyle='bottom')
-    ax4.plot(cov2[1], cov2[2], color='grey', fillstyle='bottom')
-    ax4.fill_between(cov2[1], cov2[2], color="grey", alpha=0.2)
-    ax4.axvline(x=500, ymax=0.8, color='black', linewidth=1, linestyle='--')
-    ax4.axvline(x=cov2.iloc[-1, 1]-500, ymax=0.8, color='black', linewidth=1, linestyle='--')
-    ax4.set_ylim(bottom=-36)
-    ax4.set_xlim(left=0, right=cov1.iloc[-1, 1])
-    ax4.set_yticks([0, 20, 40, 60, 80], labels=['0', '20', '40', '60', ''])
-    ax4.spines['top'].set_color('lightgrey')
+        ### Repeat track 1
+        for i in range(len(rep_df)):
+            try:
+                ax1.hlines(y=rep_y_pos_map[rep_df.loc[i, 'repClass']][0], xmin=rep_df.loc[i, 'genoStart'], xmax=rep_df.loc[i, 'genoEnd'], linewidth=4, color=rep_y_pos_map[rep_df.loc[i, 'repClass']][1])
+            except KeyError: # repeat type not in rep_y_pos_map
+                continue
+        
+        ### Coverage 2
+        ax4.plot(cov_minq2[1], cov_minq2[2], color='#df624c', fillstyle='bottom')
+        ax4.plot(cov2[1], cov2[2], color='grey', fillstyle='bottom')
+        ax4.fill_between(cov2[1], cov2[2], color="grey", alpha=0.2)
+        ax4.axvline(x=500, ymax=0.8, color='black', linewidth=1, linestyle='--')
+        ax4.axvline(x=cov2.iloc[-1, 1]-500, ymax=0.8, color='black', linewidth=1, linestyle='--')
+        ax4.set_ylim(bottom=-36)
+        ax4.set_xlim(left=0, right=cov1.iloc[-1, 1])
+        ax4.set_yticks([0, 20, 40, 60, 80], labels=['0', '20', '40', '60', ''])
+        ax4.spines['top'].set_color('lightgrey')
 
-    ### Repeat track 2
-    for i in range(len(rep_df)):
-        try:
-            ax4.hlines(y=rep_y_pos_map[rep_df.loc[i, 'repClass']][0], xmin=rep_df.loc[i, 'genoStart'], xmax=rep_df.loc[i, 'genoEnd'], linewidth=4, color=rep_y_pos_map[rep_df.loc[i, 'repClass']][1])
-        except KeyError: # repeat type not in rep_y_pos_map
-            continue
+        ### Repeat track 2
+        for i in range(len(rep_df)):
+            try:
+                ax4.hlines(y=rep_y_pos_map[rep_df.loc[i, 'repClass']][0], xmin=rep_df.loc[i, 'genoStart'], xmax=rep_df.loc[i, 'genoEnd'], linewidth=4, color=rep_y_pos_map[rep_df.loc[i, 'repClass']][1])
+            except KeyError: # repeat type not in rep_y_pos_map
+                continue
     
     plt.rcParams['hatch.linewidth'] = 0.5
 
