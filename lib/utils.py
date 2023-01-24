@@ -21,8 +21,7 @@ def compute_aln_matrix(bam, chrom, start, stop, collapse_ins=True, size=100):
     reads = []
     for read in bam.fetch(chrom, start, stop):
         if not read.is_unmapped:
-            if not read.is_secondary:
-                reads.append(read)
+            reads.append(read)
 
     aln_matrix = -1 * np.ones((len(reads), size))
     aux_dict = {'split_idx' : [],
