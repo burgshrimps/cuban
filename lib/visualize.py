@@ -181,6 +181,7 @@ def plot_breakpoints_ill(bam_filename, rep_filename, chrom, leftbp, rightbp, pad
         ax1.set_title(title)
     if outfile != None:
         plt.savefig(outfile, dpi=300, bbox_inches='tight')
+        plt.close()
     else:
         plt.show()
     
@@ -368,9 +369,9 @@ def plot_breakpoints_ill_pb(bam_filename_ill, bam_filename_pb, rep_filename, chr
         ax1.set_title(title)
     if outfile != None:
         plt.savefig(outfile, dpi=300, bbox_inches='tight')
+        plt.close()
     else:
         plt.show()
-    return aux_dict_left2, aux_dict_right2
 
 
 def acc_dot(aln_matrix, ax, labels):

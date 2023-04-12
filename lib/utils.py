@@ -119,7 +119,8 @@ def compute_aln_matrix(bam, chrom, start, stop, collapse_ins=True, size=100):
             try:
                 aln_matrix[idx, start_idx_aln:end_idx_aln] = cigararray[start_idx_read:end_idx_read]
             except: 
-                print(idx, read.query_name, start_idx_aln, end_idx_aln, start_idx_read, end_idx_read, read_start, read_end, start, stop, size, len(cigararray),  np.sum(cigararray == 1))
+                pass
+                #print(idx, read.query_name, start_idx_aln, end_idx_aln, start_idx_read, end_idx_read, read_start, read_end, start, stop, size, len(cigararray),  np.sum(cigararray == 1))
 
     return aln_matrix, aux_dict
 
@@ -133,7 +134,7 @@ def pad_alignment_matrices(aln_matrix_left, aln_matrix_right):
     return aln_matrix_left, aln_matrix_right
 
 
-def compute_cov_df(bam_filename, chrom, start, stop, minq=30):
+def compute_cov_df(bam_filename, chrom, start, stop, minq=20):
     """ Computes coverage for given region. Coverage is computed twice. Once for all reads and once for reads with
     mapping quality >= minq. """
     cov = pd.DataFrame([x.split('\t') for x in pysam.depth(bam_filename, '-r', chrom + ':' + str(start) + '-' + str(stop), '-a').split('\n')[:-1]])
