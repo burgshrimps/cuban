@@ -17,8 +17,8 @@ def plotqc(CHUNK, ERR):
 
     param index: index of dataframe to plot """
 
-    QCDIR = f'/confidential/FamilyR13/DATA/10x/sv_compare/results/{SAMPLE}_hg38/curation/{ERR}/{TYPE}/{CHUNK}'
-    QCFILE = f'{DATE}_{SAMPLE}_{ERR}_{TYPE}_{CHUNK}.tsv'
+    QCDIR = f'/project/Variation/detection/svc/curation/GRCh38/{SAMPLE}/{DATE}/{TYPE}/{ERR}/{CHUNK}'
+    QCFILE = f'{DATE}_{ERR}_{TYPE}_{CHUNK}.tsv'
 
     if not os.path.exists(f'{QCDIR}/images'):
         os.makedirs(f'{QCDIR}/images')
@@ -45,12 +45,11 @@ SAMPLE_ = SAMPLE.replace('-', '_')
 TYPE = sys.argv[3]
 ERR = sys.argv[4]
 
-BAM_ILL = f'/confidential/tGenVar/tech/illumina/bam_hg38/ill.{SAMPLE_}.hg38.bam'
-BAM_PB = f'/confidential/tGenVar/tech/pb/bam_MDtag_hg38/pb.{SAMPLE_}.hg38.bam'
-REPEATS = '/confidential/tGenVar/ref/hg38/annotation/hg38_repeatmasker.tsv'
+BAM_ILL = '/project/Variation/detection/svc/aligned_bam/HG002/mgi/GRCh38.bwa_mem.pe.sorted.mdup.recal.bam'
+BAM_PB = '/project/Dicast/GIAB_data/PacBio_SequelII_CCS_11kb_HiFi/HG002_GRCh38.haplotag.10x.bam'
+REPEATS = '/project/Dicast/reference/annotation/hg38_repeatmasker.tsv'
 
-QCDIR = f'/confidential/FamilyR13/DATA/10x/sv_compare/results/{SAMPLE}_hg38/curation/{ERR}/{TYPE}'
+QCDIR = f'/project/Variation/detection/svc/curation/GRCh38/{SAMPLE}/{DATE}/{TYPE}/{ERR}'
 CHUNKS = [path.split('/')[-1] for path in glob(f'{QCDIR}/*')]
 
 Parallel(n_jobs=len(CHUNKS))(delayed(plotqc)(chunk, err) for chunk, err in zip(CHUNKS, [ERR]*len(CHUNKS)))
-    

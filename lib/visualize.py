@@ -95,7 +95,7 @@ def plot_breakpoints_ill(bam_filename, rep_filename, chrom, leftbp, rightbp, pad
     plt.rcParams["font.weight"] = "bold"
     plt.rcParams["axes.labelweight"] = "bold"
 
-    colors = ['white', 'lightgrey', '#b7954b', '#5066a2', '#f0b6a0', '#6ac0b7', '#df624c']
+    colors = ['white', 'lightgrey', '#b7954b', '#5066a2', '#f0b6a0', '#6ac0b7', '#df624c', 'lightgrey', 'lightgrey']
     fig = plt.figure(figsize=(22,10))
 
     fig.patch.set_facecolor('white')
@@ -229,7 +229,7 @@ def plot_breakpoints_ill_pb(bam_filename_ill, bam_filename_pb, rep_filename, chr
     plt.rcParams["font.weight"] = "bold"
     plt.rcParams["axes.labelweight"] = "bold"
 
-    colors = ['white', 'lightgrey', '#b7954b', '#5066a2', '#f0b6a0', '#6ac0b7', '#df624c']
+    colors = ['white', 'lightgrey', '#b7954b', '#5066a2', '#f0b6a0', '#6ac0b7', '#df624c', 'lightgrey', 'lightgrey']
     fig = plt.figure(figsize=(22,16))
     fig.patch.set_facecolor('white')
     gs = gridspec.GridSpec(4, 4, height_ratios=[1,3,1,3], hspace=0.0, wspace=0.5)
@@ -294,7 +294,7 @@ def plot_breakpoints_ill_pb(bam_filename_ill, bam_filename_pb, rep_filename, chr
     plt.rcParams['hatch.linewidth'] = 0.5
 
     ### Breakpoints ILL
-    im = ax2.imshow(aln_matrix1, cmap=ListedColormap(colors), vmin=-1, vmax=5)
+    im = ax2.imshow(aln_matrix1, cmap=ListedColormap(colors), vmin=-1, vmax=8)
 
     ### Left Breakpoint 1
     ax2.axvline(x=window, color='black', linewidth=1, linestyle='--')
@@ -332,7 +332,7 @@ def plot_breakpoints_ill_pb(bam_filename_ill, bam_filename_pb, rep_filename, chr
     ax2.set_xticks([0, window/2, window, window*1.5, 2*window, 2*window+50, 2*window+50+window/2, 2*window+50+window, 2*window+50+window*1.5, 2*window+50+2*window], labels=[str(-int(window)), str(-int(window/2)), '0', str(int(window/2)), str(int(window)), str(-int(window)), str(-int(window/2)), '0', str(int(window/2)), str(int(window))])
 
     ### Breakpoints PB
-    im = ax4.imshow(aln_matrix2, cmap=ListedColormap(colors), vmin=-1, vmax=5)
+    im = ax4.imshow(aln_matrix2, cmap=ListedColormap(colors), vmin=-1, vmax=8)
 
     ### Left Breakpoint 2
     ax4.axvline(x=window, color='black', linewidth=1, linestyle='--')
