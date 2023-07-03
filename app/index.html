@@ -1,0 +1,47 @@
+<!DOCTYPE html>
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/4.7.0/css/font-awesome.min.css">
+<head>
+    <meta charset="UTF-8">
+    <div><h2>Manual SV Analysis</h2></div>
+    <link rel="stylesheet" href="styles.css">
+    <script src="utils.js">
+    </script>
+</head>
+<body>
+    <div class="form-style-2">
+        <form method="post" id="input_form">
+            <div class="input_div">
+                <label for="csv_file">CSV or VCF File:</label>
+                <input type="file" id="csv_file" name="csv_file" \>
+            </div>
+            <br>
+            <div class="input_div">
+                <label for="sample">Plots (Directory):</label>
+                <input type="text" id="sample" name="sample" \>
+            </div>
+            <br>
+            <div class="input_div">
+                <label for="name">Name:</label>
+                <input type="text" id="name" name="name" \>
+            </div>
+            <br>
+            <input type="submit" value="Submit" id="submit_button"/>
+        </form>
+        </div>
+    <div>
+    <div id="back_and_stop">
+        <a id='back' href="#">&laquo; Back</a>
+        <a id='stop' href="#">Stop</a>
+    </div>
+    <div id="variant_plot">
+        <a id='negative' href="#">Discard</a>
+        <canvas id="canvas"></canvas>
+        <a id='positive' href="#">Confirm</a>
+    </div>
+    <div id="download">
+    <button class="btn" id="download_button"><i class="fa fa-download"></i> Download</button>
+    </div>
+    <script>
+        document.getElementById('input_form').addEventListener('submit', readInput);
+    </script>
+</body>
