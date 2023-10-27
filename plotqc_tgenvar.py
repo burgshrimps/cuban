@@ -6,8 +6,8 @@ import os
 from joblib import Parallel, delayed
 from glob import glob
 
-from lib.visualize import plot_breakpoints_ill, plot_breakpoints_ill_pb
-from lib.utils import add_comma_to_pos
+from cuban_lib.visualize import plot_breakpoints_ill, plot_breakpoints_ill_pb
+from cuban_lib.utils import add_comma_to_pos
 
 plt.style.use('ggplot')
 

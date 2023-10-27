@@ -2,6 +2,7 @@ import pandas as pd
 import warnings
 import matplotlib.pyplot as plt
 import matplotlib.patches as mplpatches
+import matplotlib as mpl
 from matplotlib.colors import ListedColormap
 from matplotlib import gridspec
 from matplotlib import cm
@@ -9,8 +10,9 @@ import numpy as np
 import pysam
 import random 
 
-from lib.utils import compute_aln_matrix, pad_alignment_matrices, compute_cov_df, compute_rep_df
+from cuban_lib.utils import compute_aln_matrix, pad_alignment_matrices, compute_cov_df, compute_rep_df, get_variant_neighbourhood
 
+mpl.rcParams['agg.path.chunksize'] = 1000000
 pd.set_option('display.max_columns', None)
 pd.set_option('display.float_format', lambda x: '%.3f' % x)
 warnings.simplefilter(action='ignore', category=FutureWarning)
@@ -48,6 +50,8 @@ def add_disco_overlay(aux_dict, aln_matrix, ax, orient, offset=0):
                 ax.add_patch(mplpatches.Rectangle((start-0.5 + offset, idx-0.5),end-start+1, 1, hatch='\\\\',fill=False, snap=False, linewidth=0.5, edgecolor='sandybrown', alpha=1))
             elif orient == 'ff':
                 ax.add_patch(mplpatches.Rectangle((start-0.5 + offset, idx-0.5),end-start+1, 1, hatch='//',fill=False, snap=False, linewidth=0.5, edgecolor='cadetblue', alpha=1))
+            elif orient == 'rf':
+                ax.add_patch(mplpatches.Rectangle((start-0.5 + offset, idx-0.5),end-start+1, 1, hatch='\\\\',fill=False, snap=False, linewidth=0.5, edgecolor='midnightblue', alpha=1))
         except IndexError:
             pass
 
@@ -188,7 +192,7 @@ def plot_breakpoints_ill(bam_filename, rep_filename, chrom, leftbp, rightbp, pad
 
 
 
-def plot_breakpoints_ill_pb(bam_filename_ill, bam_filename_pb, rep_filename, chrom, leftbp, rightbp, padding=500, window=50, collapse_ins=True, title=None, outfile=None):
+def plot_breakpoints_ill_pb(bam_filename_ill, bam_filename_pb, rep_df, chrom, leftbp, rightbp, padding=500, window=50, collapse_ins=True, title=None, outfile=None, df_svs_ill=None, df_svs_pb=None):
     """ Plots coverage and alignments around breakpoints. """
     ### Load BAM file
     bam1 = pysam.AlignmentFile(bam_filename_ill, 'rb')
@@ -211,7 +215,7 @@ def plot_breakpoints_ill_pb(bam_filename_ill, bam_filename_pb, rep_filename, chr
     aln_matrix2 = np.concatenate((aln_matrix_left2, aln_matrix_middle2, aln_matrix_right2), axis=1)
 
     ### Do not compute coverage if SV too big
-    if rightbp - leftbp < 100000:
+    if rightbp - leftbp < 50000000:
         compute_cov = True
     else:
         compute_cov = False
@@ -222,93 +226,121 @@ def plot_breakpoints_ill_pb(bam_filename_ill, bam_filename_pb, rep_filename, chr
         cov2, cov_minq2 = compute_cov_df(bam_filename_pb, chrom, leftbp - padding, rightbp + padding)
 
     ### Compute repeat overlap
-    if compute_cov:
-        rep_df = compute_rep_df(rep_filename, chrom, leftbp - 5000, rightbp + 5000)
+    rep_df = compute_rep_df(rep_df, chrom, leftbp, rightbp)
 
     ### Plot options
     plt.rcParams["font.weight"] = "bold"
     plt.rcParams["axes.labelweight"] = "bold"
 
     colors = ['white', 'lightgrey', '#b7954b', '#5066a2', '#f0b6a0', '#6ac0b7', '#df624c', 'lightgrey', 'lightgrey']
-    fig = plt.figure(figsize=(22,16))
+    fig = plt.figure(figsize=(25,22))
     fig.patch.set_facecolor('white')
-    gs = gridspec.GridSpec(4, 4, height_ratios=[1,3,1,3], hspace=0.0, wspace=0.5)
-    ax1 = plt.subplot(gs[0, 0:4])
-    ax2 = plt.subplot(gs[1, 0:4])
-    ax3 = plt.subplot(gs[2, 0:4])
-    ax4 = plt.subplot(gs[3, 0:4])
-    axs = [ax1, ax2, ax3, ax4]
+    gs = gridspec.GridSpec(6, 4, height_ratios=[3,1,6,3,1,6], hspace=0.2, wspace=0.5)
+    ax_cov_ill = plt.subplot(gs[0, 0:4])
+    ax_svs_ill = plt.subplot(gs[1, 0:4])
+    ax_cig_ill = plt.subplot(gs[2, 0:4])
+    ax_cov_pb = plt.subplot(gs[3, 0:4])
+    ax_svs_pb = plt.subplot(gs[4, 0:4])
+    ax_cig_pb = plt.subplot(gs[5, 0:4])
+    
+    axs = [ax_cov_ill, ax_svs_ill, ax_cig_ill, ax_cov_pb, ax_svs_pb, ax_cig_pb]
+    
     for ax in axs:
         ax.grid(False)
         ax.set_facecolor('white')
-    for ax in [ax2, ax4]:
+        
+    for ax in [ax_cig_ill, ax_cig_pb]:
         ax.axes.yaxis.set_visible(False)
-
+        
+    for ax in [ax_svs_ill, ax_svs_pb]:
+        ax.axes.xaxis.set_visible(False)
+        ax.axes.yaxis.set_visible(False)
+        
+        for spine in ax.spines.values():
+            spine.set_visible(False)
+        
     plt.rcParams["font.weight"] = "bold"
     plt.rcParams["axes.labelweight"] = "bold"
-
+    
     if compute_cov:
         ### Coverage 1
-        ax1.plot(cov_minq1[1], cov_minq1[2], color='#df624c', fillstyle='bottom')
-        ax1.plot(cov1[1], cov1[2], color='grey', fillstyle='bottom')
-        ax1.fill_between(cov1[1], cov1[2], color="grey", alpha=0.2)
-        ax1.axvline(x=500, color='black', linewidth=1, linestyle='--')
-        ax1.axvline(x=cov1.iloc[-1, 1]-500, color='black', linewidth=1, linestyle='--')
-        ax1.set_ylim(bottom=-66)
-        ax1.set_xlim(left=0, right=cov1.iloc[-1, 1])
-        ax1.set_yticks([0, 20, 40, 60], labels=['0', '20', '40', '60'])
-
+        ax_cov_ill.plot(cov_minq1[1], cov_minq1[2], color='#df624c', fillstyle='bottom')
+        ax_cov_ill.plot(cov1[1], cov1[2], color='grey', fillstyle='bottom')
+        ax_cov_ill.fill_between(cov1[1], cov1[2], color="grey", alpha=0.2)
+        ax_cov_ill.axvline(x=500, color='black', linewidth=1, linestyle='--')
+        ax_cov_ill.axvline(x=cov1.iloc[-1, 1]-500, color='black', linewidth=1, linestyle='--')
+        ax_cov_ill.set_ylim(bottom=-70)
+        ax_cov_ill.set_xlim(left=0, right=cov1.iloc[-1, 1])
+        ax_cov_ill.set_yticks([0, 20, 40, 60], labels=['0', '20', '40', '60'])
+        
         ### Repeat track 1
         for i in range(len(rep_df)):
             try:
-                ax1.hlines(y=rep_y_pos_map[rep_df.loc[i, 'repClass']][0], xmin=rep_df.loc[i, 'genoStart'], xmax=rep_df.loc[i, 'genoEnd'], linewidth=4, color=rep_y_pos_map[rep_df.loc[i, 'repClass']][1])
+                ax_cov_ill.hlines(y=rep_y_pos_map[rep_df.loc[i, 'repClass']][0], xmin=rep_df.loc[i, 'genoStart'], xmax=rep_df.loc[i, 'genoEnd'], linewidth=4, color=rep_y_pos_map[rep_df.loc[i, 'repClass']][1])
             except KeyError: # repeat type not in rep_y_pos_map
                 continue
         
         # Add repeat labels
         for key in rep_y_pos_map.keys():
-            ax1.text(10, rep_y_pos_map[key][0]-2, key.replace('_', ' '), fontsize=7, horizontalalignment='left', verticalalignment='center', color='black', weight='bold')
+            ax_cov_ill.text(10, rep_y_pos_map[key][0]-2, key.replace('_', ' '), fontsize=7, horizontalalignment='left', verticalalignment='center', color='black', weight='bold')
         
         ### Coverage 2
-        ax3.plot(cov_minq2[1], cov_minq2[2], color='#df624c', fillstyle='bottom')
-        ax3.plot(cov2[1], cov2[2], color='grey', fillstyle='bottom')
-        ax3.fill_between(cov2[1], cov2[2], color="grey", alpha=0.2)
-        ax3.axvline(x=500, ymax=0.8, color='black', linewidth=1, linestyle='--')
-        ax3.axvline(x=cov2.iloc[-1, 1]-500, ymax=0.8, color='black', linewidth=1, linestyle='--')
-        ax3.set_ylim(bottom=-66)
-        ax3.set_xlim(left=0, right=cov1.iloc[-1, 1])
-        ax3.set_yticks([0, 20, 40, 60, 80], labels=['0', '20', '40', '60', ''])
-        ax3.spines['top'].set_color('lightgrey')
-
+        ax_cov_pb.plot(cov_minq2[1], cov_minq2[2], color='#df624c', fillstyle='bottom')
+        ax_cov_pb.plot(cov2[1], cov2[2], color='grey', fillstyle='bottom')
+        ax_cov_pb.fill_between(cov2[1], cov2[2], color="grey", alpha=0.2)
+        ax_cov_pb.axvline(x=500, color='black', linewidth=1, linestyle='--')
+        ax_cov_pb.axvline(x=cov2.iloc[-1, 1]-500, color='black', linewidth=1, linestyle='--')
+        ax_cov_pb.set_ylim(bottom=-70)
+        ax_cov_pb.set_xlim(left=0, right=cov2.iloc[-1, 1])
+        ax_cov_pb.set_yticks([0, 20, 40, 60, 80], labels=['0', '20', '40', '60', ''])
+        
         ### Repeat track 2
         for i in range(len(rep_df)):
             try:
-                ax3.hlines(y=rep_y_pos_map[rep_df.loc[i, 'repClass']][0], xmin=rep_df.loc[i, 'genoStart'], xmax=rep_df.loc[i, 'genoEnd'], linewidth=4, color=rep_y_pos_map[rep_df.loc[i, 'repClass']][1])
+                ax_cov_pb.hlines(y=rep_y_pos_map[rep_df.loc[i, 'repClass']][0], xmin=rep_df.loc[i, 'genoStart'], xmax=rep_df.loc[i, 'genoEnd'], linewidth=4, color=rep_y_pos_map[rep_df.loc[i, 'repClass']][1])
             except KeyError: # repeat type not in rep_y_pos_map
                 continue
-
+        
         # Add repeat labels
         for key in rep_y_pos_map.keys():
-            ax3.text(10, rep_y_pos_map[key][0]-2, key.replace('_', ' '), fontsize=7, horizontalalignment='left', verticalalignment='center', color='black', weight='bold')
+            ax_cov_pb.text(10, rep_y_pos_map[key][0]-2, key.replace('_', ' '), fontsize=7, horizontalalignment='left', verticalalignment='center', color='black', weight='bold')
     
     plt.rcParams['hatch.linewidth'] = 0.5
+    cmap = cm.inferno.reversed()
+    
+    ### SV Neighbourhood ILL
+    ax_svs_ill.set_xlim(left=0, right=rightbp - leftbp + 2 * padding)
+    if df_svs_ill is not None:
+        sv_neighbourhood_ill_df = get_variant_neighbourhood(df_svs_ill, chrom, leftbp, rightbp)
+        for i in range(len(sv_neighbourhood_ill_df)):
+            y_pos = i * -8
+            sv_qual = sv_neighbourhood_ill_df.loc[i, 'dicast_qual']
+            if not np.isnan(sv_qual):
+                color = cmap(sv_qual)
+            else:
+                color = 'lightgrey'
+            ax_svs_ill.hlines(y=y_pos, xmin=sv_neighbourhood_ill_df.loc[i, 'start'], xmax=sv_neighbourhood_ill_df.loc[i, 'end'], linewidth=4, color=color)
+            ax_svs_ill.text(10, y_pos, sv_neighbourhood_ill_df.loc[i, 'caller'], fontsize=7, horizontalalignment='left', verticalalignment='center', color='black', weight='bold')
+    
 
     ### Breakpoints ILL
-    im = ax2.imshow(aln_matrix1, cmap=ListedColormap(colors), vmin=-1, vmax=8)
+    im = ax_cig_ill.imshow(aln_matrix1, cmap=ListedColormap(colors), vmin=-1, vmax=8)
 
     ### Left Breakpoint 1
-    ax2.axvline(x=window, color='black', linewidth=1, linestyle='--')
-    add_mapq_overlay(aux_dict_left1, aln_matrix_left1, ax2)
-    add_disco_overlay(aux_dict_left1, aln_matrix_left1, ax2, 'rr')
-    add_disco_overlay(aux_dict_left1, aln_matrix_left1, ax2, 'ff')
-    add_splitread_overlay(aux_dict_left1, aln_matrix_left1, ax2)
+    ax_cig_ill.axvline(x=window, color='black', linewidth=1, linestyle='--')
+    add_mapq_overlay(aux_dict_left1, aln_matrix_left1, ax_cig_ill)
+    add_disco_overlay(aux_dict_left1, aln_matrix_left1, ax_cig_ill, 'rr')
+    add_disco_overlay(aux_dict_left1, aln_matrix_left1, ax_cig_ill, 'ff')
+    add_disco_overlay(aux_dict_left1, aln_matrix_left1, ax_cig_ill, 'rf')
+    add_splitread_overlay(aux_dict_left1, aln_matrix_left1, ax_cig_ill)
 
     ### Right Breakpoint 1
-    ax2.axvline(x=window+2.5*window, color='black', linewidth=1, linestyle='--')
-    add_mapq_overlay(aux_dict_right1, aln_matrix_right1, ax2, offset=2.5*window)
-    add_disco_overlay(aux_dict_right1, aln_matrix_right1, ax2, 'rr', offset=2.5*window)
-    add_disco_overlay(aux_dict_right1, aln_matrix_right1, ax2, 'ff', offset=2.5*window)
-    add_splitread_overlay(aux_dict_right1, aln_matrix_right1, ax2, offset=2.5*window)
+    ax_cig_ill.axvline(x=window+2.5*window, color='black', linewidth=1, linestyle='--')
+    add_mapq_overlay(aux_dict_right1, aln_matrix_right1, ax_cig_ill, offset=2.5*window)
+    add_disco_overlay(aux_dict_right1, aln_matrix_right1, ax_cig_ill, 'rr', offset=2.5*window)
+    add_disco_overlay(aux_dict_right1, aln_matrix_right1, ax_cig_ill, 'ff', offset=2.5*window)
+    add_disco_overlay(aux_dict_right1, aln_matrix_right1, ax_cig_ill, 'rf', offset=2.5*window)
+    add_splitread_overlay(aux_dict_right1, aln_matrix_right1, ax_cig_ill, offset=2.5*window)
 
     ### Read Connections 1
     df_aux_left1 = pd.DataFrame(aux_dict_left1['name'], columns=['name']).reset_index()
@@ -323,26 +355,26 @@ def plot_breakpoints_ill_pb(bam_filename_ill, bam_filename_pb, rep_filename, chr
 
     for i in range(len(df_aux_merge1)):
         if df_aux_merge1.loc[i, 'split_left'] == 1 and df_aux_merge1.loc[i, 'split_right'] == 1:
-            ax2.plot([window*2, (window*2)+49.5], [df_aux_merge1.loc[i, 'index_left'], df_aux_merge1.loc[i, 'index_right']], color='black', linewidth=0.5, linestyle='dotted')
+            ax_cig_ill.plot([window*2, (window*2)+49.5], [df_aux_merge1.loc[i, 'index_left'], df_aux_merge1.loc[i, 'index_right']], color='black', linewidth=0.5, linestyle='dotted')
         else:
-            ax2.plot([window*2, (window*2)+49.5], [df_aux_merge1.loc[i, 'index_left'], df_aux_merge1.loc[i, 'index_right']], color='#df624c', linewidth=0.5, linestyle='dotted')
+            ax_cig_ill.plot([window*2, (window*2)+49.5], [df_aux_merge1.loc[i, 'index_left'], df_aux_merge1.loc[i, 'index_right']], color='#df624c', linewidth=0.5, linestyle='dotted')
 
-    ax2.axvline(x=(window*2)-0.5, color='lightgrey', linewidth=1, linestyle='--')
-    ax2.axvline(x=(window*2)+49.5, color='lightgrey', linewidth=1, linestyle='--')
-    ax2.set_xticks([0, window/2, window, window*1.5, 2*window, 2*window+50, 2*window+50+window/2, 2*window+50+window, 2*window+50+window*1.5, 2*window+50+2*window], labels=[str(-int(window)), str(-int(window/2)), '0', str(int(window/2)), str(int(window)), str(-int(window)), str(-int(window/2)), '0', str(int(window/2)), str(int(window))])
+    ax_cig_ill.axvline(x=(window*2)-0.5, color='lightgrey', linewidth=1, linestyle='--')
+    ax_cig_ill.axvline(x=(window*2)+49.5, color='lightgrey', linewidth=1, linestyle='--')
+    ax_cig_ill.set_xticks([0, window/2, window, window*1.5, 2*window, 2*window+50, 2*window+50+window/2, 2*window+50+window, 2*window+50+window*1.5, 2*window+50+2*window], labels=[str(-int(window)), str(-int(window/2)), '0', str(int(window/2)), str(int(window)), str(-int(window)), str(-int(window/2)), '0', str(int(window/2)), str(int(window))])
 
     ### Breakpoints PB
-    im = ax4.imshow(aln_matrix2, cmap=ListedColormap(colors), vmin=-1, vmax=8)
+    im = ax_cig_pb.imshow(aln_matrix2, cmap=ListedColormap(colors), vmin=-1, vmax=8)
 
     ### Left Breakpoint 2
-    ax4.axvline(x=window, color='black', linewidth=1, linestyle='--')
-    add_mapq_overlay(aux_dict_left2, aln_matrix_left2, ax4)
-    add_splitread_overlay(aux_dict_left2, aln_matrix_left2, ax4)
+    ax_cig_pb.axvline(x=window, color='black', linewidth=1, linestyle='--')
+    add_mapq_overlay(aux_dict_left2, aln_matrix_left2, ax_cig_pb)
+    add_splitread_overlay(aux_dict_left2, aln_matrix_left2, ax_cig_pb)
 
     ### Right Breakpoint 2
-    ax4.axvline(x=window+2.5*window, color='black', linewidth=1, linestyle='--')
-    add_mapq_overlay(aux_dict_right2, aln_matrix_right2, ax4, offset=2.5*window)
-    add_splitread_overlay(aux_dict_right2, aln_matrix_right2, ax4, offset=2.5*window)
+    ax_cig_pb.axvline(x=window+2.5*window, color='black', linewidth=1, linestyle='--')
+    add_mapq_overlay(aux_dict_right2, aln_matrix_right2, ax_cig_pb, offset=2.5*window)
+    add_splitread_overlay(aux_dict_right2, aln_matrix_right2, ax_cig_pb, offset=2.5*window)
 
     ### Read Connections 2
     df_aux_left2 = pd.DataFrame(aux_dict_left2['name'], columns=['name']).reset_index()
@@ -352,24 +384,23 @@ def plot_breakpoints_ill_pb(bam_filename_ill, bam_filename_pb, rep_filename, chr
     df_aux_merge2['index_right'] = df_aux_merge2['index_right'].astype(int)
 
     for i in range(len(df_aux_merge2)):
-        ax4.plot([window*2, (window*2)+49.5], [df_aux_merge2.loc[i, 'index_left'], df_aux_merge2.loc[i, 'index_right']], color='black', linewidth=0.5, linestyle='dotted')
+        ax_cig_pb.plot([window*2, (window*2)+49.5], [df_aux_merge2.loc[i, 'index_left'], df_aux_merge2.loc[i, 'index_right']], color='black', linewidth=0.5, linestyle='dotted')
 
-    ax4.axvline(x=(window*2)-0.5, color='lightgrey', linewidth=1, linestyle='--')
-    ax4.axvline(x=(window*2)+49.5, color='lightgrey', linewidth=1, linestyle='--')
-    ax4.set_xticks([0, window/2, window, window*1.5, 2*window, 2*window+50, 2*window+50+window/2, 2*window+50+window, 2*window+50+window*1.5, 2*window+50+2*window], labels=[str(-int(window)), str(-int(window/2)), '0', str(int(window/2)), str(int(window)), str(-int(window)), str(-int(window/2)), '0', str(int(window/2)), str(int(window))])
-
-
-    ### Colorbar
-    cbar = fig.colorbar(im, cmap=ListedColormap(colors[1:]), ax=[ax1, ax2, ax3, ax4], shrink=0.5, ticks=[0.3,1.1,2,2.8,3.7,4.5])
-    labels = ['M', 'I', 'D', 'N', 'S', 'H']
-    cbar.ax.set_yticklabels(labels)
+    ax_cig_pb.axvline(x=(window*2)-0.5, color='lightgrey', linewidth=1, linestyle='--')
+    ax_cig_pb.axvline(x=(window*2)+49.5, color='lightgrey', linewidth=1, linestyle='--')
+    ax_cig_pb.set_xticks([0, window/2, window, window*1.5, 2*window, 2*window+50, 2*window+50+window/2, 2*window+50+window, 2*window+50+window*1.5, 2*window+50+2*window], labels=[str(-int(window)), str(-int(window/2)), '0', str(int(window/2)), str(int(window)), str(-int(window)), str(-int(window/2)), '0', str(int(window/2)), str(int(window))])
 
     ### Output
     if title != None:
-        ax1.set_title(title)
+        ax_cov_ill.set_title(title)
     if outfile != None:
-        plt.savefig(outfile, dpi=300, bbox_inches='tight')
-        plt.close()
+        try:
+            plt.savefig(outfile, dpi=300, bbox_inches='tight')
+            plt.close()
+        except OverflowError:
+            plt.clf()
+            plt.text(0.5, 0.5, 'Plotting not possible', ha='center', va='center')
+            plt.savefig(outfile, dpi=300, bbox_inches='tight')
     else:
         plt.show()
 
