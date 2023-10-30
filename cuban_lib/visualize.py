@@ -9,6 +9,7 @@ from matplotlib import cm
 import numpy as np
 import pysam
 import random 
+from scipy.signal import savgol_filter
 
 from cuban_lib.utils import compute_aln_matrix, pad_alignment_matrices, compute_cov_df, compute_rep_df, get_variant_neighbourhood
 
@@ -192,7 +193,7 @@ def plot_breakpoints_ill(bam_filename, rep_filename, chrom, leftbp, rightbp, pad
 
 
 
-def plot_breakpoints_ill_pb(bam_filename_ill, bam_filename_pb, rep_df, chrom, leftbp, rightbp, padding=500, window=50, collapse_ins=True, title=None, outfile=None, df_svs_ill=None, df_svs_pb=None):
+def plot_breakpoints_ill_pb(bam_filename_ill, bam_filename_pb, rep_df, chrom, leftbp, rightbp, padding=500, window=50, collapse_ins=True, title=None, outfile=None, df_svs_ill=None, df_svs_pb=None, ill_baseline_cov=None, pb_baseline_cov=None):
     """ Plots coverage and alignments around breakpoints. """
     ### Load BAM file
     bam1 = pysam.AlignmentFile(bam_filename_ill, 'rb')
@@ -222,8 +223,12 @@ def plot_breakpoints_ill_pb(bam_filename_ill, bam_filename_pb, rep_df, chrom, le
 
     ### Compute coverage
     if compute_cov:
-        cov1, cov_minq1 = compute_cov_df(bam_filename_ill, chrom, leftbp - padding, rightbp + padding)
-        cov2, cov_minq2 = compute_cov_df(bam_filename_pb, chrom, leftbp - padding, rightbp + padding)
+        cov_padding = max(padding, int((rightbp - leftbp) * 0.2))
+        cov1, cov_minq1 = compute_cov_df(bam_filename_ill, chrom, leftbp - cov_padding, rightbp + cov_padding)
+        cov2, cov_minq2 = compute_cov_df(bam_filename_pb, chrom, leftbp - cov_padding, rightbp + cov_padding)
+        if rightbp - leftbp > 1000:
+            cov_minq1_smoothed = savgol_filter(cov_minq1[2], int((rightbp - leftbp) * 0.05), 3)
+            cov_minq2_smoothed = savgol_filter(cov_minq2[2], int((rightbp - leftbp) * 0.05), 3)
 
     ### Compute repeat overlap
     rep_df = compute_rep_df(rep_df, chrom, leftbp, rightbp)
@@ -266,12 +271,17 @@ def plot_breakpoints_ill_pb(bam_filename_ill, bam_filename_pb, rep_df, chrom, le
         ### Coverage 1
         ax_cov_ill.plot(cov_minq1[1], cov_minq1[2], color='#df624c', fillstyle='bottom')
         ax_cov_ill.plot(cov1[1], cov1[2], color='grey', fillstyle='bottom')
+        if rightbp - leftbp > 1000:
+            ax_cov_ill.plot(cov_minq1[1], cov_minq1_smoothed, color='black')
+        if ill_baseline_cov is not None:
+            ax_cov_ill.axhline(y=ill_baseline_cov, color='#df624c', linewidth=1, linestyle='--')
         ax_cov_ill.fill_between(cov1[1], cov1[2], color="grey", alpha=0.2)
-        ax_cov_ill.axvline(x=500, color='black', linewidth=1, linestyle='--')
-        ax_cov_ill.axvline(x=cov1.iloc[-1, 1]-500, color='black', linewidth=1, linestyle='--')
+        ax_cov_ill.axvline(x=cov_padding, color='black', linewidth=1, linestyle='--')
+        ax_cov_ill.axvline(x=cov1.iloc[-1, 1] - cov_padding, color='black', linewidth=1, linestyle='--')
+        cov1_median = cov1[2].median()
+        cov1_mad = (cov1[2] - cov1_median).abs().median()
         ax_cov_ill.set_ylim(bottom=-70)
         ax_cov_ill.set_xlim(left=0, right=cov1.iloc[-1, 1])
-        ax_cov_ill.set_yticks([0, 20, 40, 60], labels=['0', '20', '40', '60'])
         
         ### Repeat track 1
         for i in range(len(rep_df)):
@@ -287,12 +297,18 @@ def plot_breakpoints_ill_pb(bam_filename_ill, bam_filename_pb, rep_df, chrom, le
         ### Coverage 2
         ax_cov_pb.plot(cov_minq2[1], cov_minq2[2], color='#df624c', fillstyle='bottom')
         ax_cov_pb.plot(cov2[1], cov2[2], color='grey', fillstyle='bottom')
+        if rightbp - leftbp > 1000:
+            ax_cov_pb.plot(cov_minq2[1], cov_minq2_smoothed, color='black')
+        if pb_baseline_cov is not None:
+            ax_cov_pb.axhline(y=pb_baseline_cov, color='#df624c', linewidth=1, linestyle='--')
         ax_cov_pb.fill_between(cov2[1], cov2[2], color="grey", alpha=0.2)
-        ax_cov_pb.axvline(x=500, color='black', linewidth=1, linestyle='--')
-        ax_cov_pb.axvline(x=cov2.iloc[-1, 1]-500, color='black', linewidth=1, linestyle='--')
+        ax_cov_pb.axvline(x=cov_padding, color='black', linewidth=1, linestyle='--')
+        ax_cov_pb.axvline(x=cov2.iloc[-1, 1] - cov_padding, color='black', linewidth=1, linestyle='--')
+        cov2_median = cov2[2].median()
+        cov2_mad = (cov2[2] - cov2_median).abs().median()
         ax_cov_pb.set_ylim(bottom=-70)
         ax_cov_pb.set_xlim(left=0, right=cov2.iloc[-1, 1])
-        ax_cov_pb.set_yticks([0, 20, 40, 60, 80], labels=['0', '20', '40', '60', ''])
+        #ax_cov_pb.set_yticks([0, 20, 40, 60, 80], labels=['0', '20', '40', '60', ''])
         
         ### Repeat track 2
         for i in range(len(rep_df)):
@@ -309,9 +325,9 @@ def plot_breakpoints_ill_pb(bam_filename_ill, bam_filename_pb, rep_df, chrom, le
     cmap = cm.inferno.reversed()
     
     ### SV Neighbourhood ILL
-    ax_svs_ill.set_xlim(left=0, right=rightbp - leftbp + 2 * padding)
+    ax_svs_ill.set_xlim(left=0, right=rightbp - leftbp + 2 * cov_padding)
     if df_svs_ill is not None:
-        sv_neighbourhood_ill_df = get_variant_neighbourhood(df_svs_ill, chrom, leftbp, rightbp)
+        sv_neighbourhood_ill_df = get_variant_neighbourhood(df_svs_ill, chrom, leftbp, rightbp, padding=cov_padding)
         for i in range(len(sv_neighbourhood_ill_df)):
             y_pos = i * -8
             sv_qual = sv_neighbourhood_ill_df.loc[i, 'dicast_qual']
