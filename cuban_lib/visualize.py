@@ -216,7 +216,7 @@ def plot_breakpoints_ill_pb(bam_filename_ill, bam_filename_pb, rep_df, chrom, le
     aln_matrix2 = np.concatenate((aln_matrix_left2, aln_matrix_middle2, aln_matrix_right2), axis=1)
 
     ### Do not compute coverage if SV too big
-    if rightbp - leftbp < 50000000:
+    if rightbp - leftbp < 2000000:
         compute_cov = True
     else:
         compute_cov = False
@@ -224,9 +224,9 @@ def plot_breakpoints_ill_pb(bam_filename_ill, bam_filename_pb, rep_df, chrom, le
     ### Compute coverage
     if compute_cov:
         cov_padding = max(padding, int((rightbp - leftbp) * 0.2))
-        cov1, cov_minq1 = compute_cov_df(bam_filename_ill, chrom, leftbp - cov_padding, rightbp + cov_padding)
-        cov2, cov_minq2 = compute_cov_df(bam_filename_pb, chrom, leftbp - cov_padding, rightbp + cov_padding)
-        if rightbp - leftbp > 1000:
+        cov1, cov_minq1 = compute_cov_df(bam_filename_ill, chrom, max(1, leftbp - cov_padding), rightbp + cov_padding)
+        cov2, cov_minq2 = compute_cov_df(bam_filename_pb, chrom, max(1, leftbp - cov_padding), rightbp + cov_padding)
+        if rightbp - leftbp > 1000 and rightbp - leftbp < 100000:
             cov_minq1_smoothed = savgol_filter(cov_minq1[2], int((rightbp - leftbp) * 0.05), 3)
             cov_minq2_smoothed = savgol_filter(cov_minq2[2], int((rightbp - leftbp) * 0.05), 3)
 
@@ -271,7 +271,7 @@ def plot_breakpoints_ill_pb(bam_filename_ill, bam_filename_pb, rep_df, chrom, le
         ### Coverage 1
         ax_cov_ill.plot(cov_minq1[1], cov_minq1[2], color='#df624c', fillstyle='bottom')
         ax_cov_ill.plot(cov1[1], cov1[2], color='grey', fillstyle='bottom')
-        if rightbp - leftbp > 1000:
+        if rightbp - leftbp > 1000 and rightbp - leftbp < 100000:
             ax_cov_ill.plot(cov_minq1[1], cov_minq1_smoothed, color='black')
         if ill_baseline_cov is not None:
             ax_cov_ill.axhline(y=ill_baseline_cov, color='#df624c', linewidth=1, linestyle='--')
@@ -297,7 +297,7 @@ def plot_breakpoints_ill_pb(bam_filename_ill, bam_filename_pb, rep_df, chrom, le
         ### Coverage 2
         ax_cov_pb.plot(cov_minq2[1], cov_minq2[2], color='#df624c', fillstyle='bottom')
         ax_cov_pb.plot(cov2[1], cov2[2], color='grey', fillstyle='bottom')
-        if rightbp - leftbp > 1000:
+        if rightbp - leftbp > 1000 and rightbp - leftbp < 100000:
             ax_cov_pb.plot(cov_minq2[1], cov_minq2_smoothed, color='black')
         if pb_baseline_cov is not None:
             ax_cov_pb.axhline(y=pb_baseline_cov, color='#df624c', linewidth=1, linestyle='--')
@@ -325,9 +325,15 @@ def plot_breakpoints_ill_pb(bam_filename_ill, bam_filename_pb, rep_df, chrom, le
     cmap = cm.inferno.reversed()
     
     ### SV Neighbourhood ILL
-    ax_svs_ill.set_xlim(left=0, right=rightbp - leftbp + 2 * cov_padding)
+    if compute_cov:
+        ax_svs_ill.set_xlim(left=0, right=rightbp - leftbp + 2 * cov_padding)
+    else:
+        ax_svs_ill.set_xlim(left=0, right=rightbp - leftbp + 2 * padding)
     if df_svs_ill is not None:
-        sv_neighbourhood_ill_df = get_variant_neighbourhood(df_svs_ill, chrom, leftbp, rightbp, padding=cov_padding)
+        if compute_cov:
+            sv_neighbourhood_ill_df = get_variant_neighbourhood(df_svs_ill, chrom, leftbp, rightbp, padding=cov_padding)
+        else:
+            sv_neighbourhood_ill_df = get_variant_neighbourhood(df_svs_ill, chrom, leftbp, rightbp, padding=padding)
         for i in range(len(sv_neighbourhood_ill_df)):
             y_pos = i * -8
             sv_qual = sv_neighbourhood_ill_df.loc[i, 'dicast_qual']

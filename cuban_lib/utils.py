@@ -19,7 +19,7 @@ def cigartuples_to_array(cigartuples):
 def compute_aln_matrix(bam, chrom, start, stop, collapse_ins=True, size=100):
     """ Computes alignment matrix consisting of CIGAR integers for a given region. """
     reads = []
-    for read in bam.fetch(chrom, start, stop):
+    for read in bam.fetch(chrom, max(1, start), stop):
         if not read.is_unmapped:
             reads.append(read)
 
@@ -160,6 +160,7 @@ def compute_cov_df(bam_filename, chrom, start, stop, minq=20):
     cov_minq[1] = cov_minq[1].astype(int)
     cov_minq[2] = cov_minq[2].astype(int)
     cov_minq[1] = cov_minq[1] - cov_minq.loc[0, 1]
+
     return cov, cov_minq
 
 
