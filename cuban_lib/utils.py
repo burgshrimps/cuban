@@ -199,3 +199,45 @@ def add_comma_to_pos(pos):
         if i % 3 == 2:
             newstr = ',' + newstr
     return newstr
+
+
+def compute_baseline_cov(bam_filename: str, chrom: str, n: int=1000, s: int=1000) -> float:
+    """ Computes baseline coverage for a given chromosome.
+
+    Args:
+        bam_filename (str): Filename of BAM file
+        chrom (str): Chromosome
+        n (int, optional): Number of regions to sample. Defaults to 1000.
+        s (int, optional): Size of each sampled region. Defaults to 1000.
+
+    Returns:
+        float: Median coverage across sampled regions
+    """    
+    
+    # Open BAM file
+    bam = pysam.AlignmentFile(bam_filename, 'rb')
+    
+    # Get chromosome index to get chromosome length
+    if chrom == 'chrX':
+        chrom_idx = 22
+    elif chrom == 'chrY':
+        chrom_idx = 23
+    elif chrom == 'chrM':
+        chrom_idx = 24
+    else:
+        chrom_idx = int(chrom[3:]) - 1
+        
+    baseline_coverage_mean = []
+    for i in range(n):
+        start = np.random.randint(0, bam.lengths[chrom_idx])
+        stop = start + s
+        region = chrom + ':' + str(start) + '-' + str(stop)
+        
+        coverage = [0] * (stop - start + 1)
+        for pileupcolumn in bam.pileup(chrom, start, stop, min_mapping_quality=20, flag_filter=1540, stepper='samtools', ignore_orphans=False, ignore_overlaps=False):
+            if start <= pileupcolumn.pos <= stop:
+                coverage[pileupcolumn.pos - start] = pileupcolumn.nsegments
+        
+        baseline_coverage_mean.append(np.mean(coverage))
+        
+    return np.median(baseline_coverage_mean)
