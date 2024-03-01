@@ -231,7 +231,6 @@ def compute_baseline_cov(bam_filename: str, chrom: str, n: int=1000, s: int=1000
     for i in range(n):
         start = np.random.randint(0, bam.lengths[chrom_idx])
         stop = start + s
-        region = chrom + ':' + str(start) + '-' + str(stop)
         
         coverage = [0] * (stop - start + 1)
         for pileupcolumn in bam.pileup(chrom, start, stop, min_mapping_quality=20, flag_filter=1540, stepper='samtools', ignore_orphans=False, ignore_overlaps=False):
