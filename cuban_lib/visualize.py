@@ -11,14 +11,16 @@ import numpy as np
 import pysam
 import random 
 from scipy.signal import savgol_filter
+from scipy.stats import gaussian_kde
 
-from cuban_lib.utils import compute_aln_matrix, pad_alignment_matrices, compute_cov_df, compute_rep_df, get_variant_neighbourhood
+from cuban_lib.utils import compute_aln_matrix, pad_alignment_matrices, compute_cov_df, compute_rep_df, get_variant_neighbourhood, compute_isize_orientation_dict
 
 mpl.rcParams['agg.path.chunksize'] = 1000000
 pd.set_option('display.max_columns', None)
 pd.set_option('display.float_format', lambda x: '%.3f' % x)
 warnings.simplefilter(action='ignore', category=FutureWarning)
 warnings.simplefilter(action='ignore', category=RuntimeWarning)
+plt.style.use('ggplot')
 
 
 rep_y_pos_map = {'LINE' : (-6, '#6ac0b7'),
@@ -136,6 +138,9 @@ def plot_breakpoints_ill(bam_filename_ill: str, rep_df: pd.DataFrame, chrom: str
         cov, cov_minq = compute_cov_df(bam_filename_ill, chrom, max(1, leftbp - cov_padding), rightbp + cov_padding)
         if rightbp - leftbp > 1000 and rightbp - leftbp < 100000:
             cov_minq_smoothed = savgol_filter(cov_minq[2], int((rightbp - leftbp) * 0.05), 3)
+            
+        ### Compute insert size outliers and discordant orientation
+        isize_orient_dict = compute_isize_orientation_dict(bam_filename_ill, chrom, max(1, leftbp - cov_padding), rightbp + cov_padding)
 
     ### Compute repeat overlap
     rep_df = compute_rep_df(rep_df, chrom, leftbp, rightbp)
@@ -161,10 +166,12 @@ def plot_breakpoints_ill(bam_filename_ill: str, rep_df: pd.DataFrame, chrom: str
             spine.set_visible(False)
         
     else:
-        gs = gridspec.GridSpec(2, 4, height_ratios=[3,7], hspace=0.2, wspace=0.5)
+        gs = gridspec.GridSpec(4, 4, height_ratios=[3,0.5,0.5,7], hspace=0.2, wspace=0.5)
         ax_cov_ill = plt.subplot(gs[0, 0:4])
-        ax_cig_ill = plt.subplot(gs[1, 0:4])
-        axs = [ax_cov_ill, ax_cig_ill]
+        ax_isize_ill = plt.subplot(gs[1, 0:4])
+        ax_orient_ill = plt.subplot(gs[2, 0:4])
+        ax_cig_ill = plt.subplot(gs[3, 0:4])
+        axs = [ax_cov_ill, ax_isize_ill, ax_orient_ill, ax_cig_ill]
         
     
     for ax in axs:
@@ -186,6 +193,7 @@ def plot_breakpoints_ill(bam_filename_ill: str, rep_df: pd.DataFrame, chrom: str
         ax_cov_ill.axvline(x=cov.iloc[-1, 1] - cov_padding, color='black', linewidth=1, linestyle='--')
         ax_cov_ill.set_ylim(bottom=-70)
         ax_cov_ill.set_xlim(left=0, right=cov.iloc[-1, 1])
+        ax_cov_ill.set_xticks([])
         
         ### Repeat track 
         for i in range(len(rep_df)):
@@ -197,6 +205,45 @@ def plot_breakpoints_ill(bam_filename_ill: str, rep_df: pd.DataFrame, chrom: str
         # Add repeat labels
         for key in rep_y_pos_map.keys():
             ax_cov_ill.text(10, rep_y_pos_map[key][0]-2, key.replace('_', ' '), fontsize=7, horizontalalignment='left', verticalalignment='center', color='black', weight='bold')
+    
+        ### Insert size track
+        x_range = np.linspace(0, cov.iloc[-1, 1], 1000)
+        
+        if len(isize_orient_dict['exceed_max'] > 1):
+            kde_max = gaussian_kde(isize_orient_dict['exceed_max'])
+            kde_max.set_bandwidth(bw_method=kde_max.factor / 10.)
+            kde_values_max = kde_max(x_range)
+            ax_isize_ill.plot(x_range, kde_values_max, color='black')
+            ax_isize_ill.set_xlim(left=0, right=cov.iloc[-1, 1])
+            ax_isize_ill.set_yticks([])
+            ax_isize_ill.set_xticks([])
+            ax_isize_ill.axvline(x=cov_padding, color='black', linewidth=1, linestyle='--')
+            ax_isize_ill.axvline(x=cov.iloc[-1, 1] - cov_padding, color='black', linewidth=1, linestyle='--')
+        
+        ### Read Orientation Track
+        if len(isize_orient_dict['rr']) > 1:
+            kde_rr = gaussian_kde(isize_orient_dict['rr'])
+            kde_rr.set_bandwidth(bw_method=kde_rr.factor / 10.)
+            kde_values_rr = kde_rr(x_range)
+            ax_orient_ill.plot(x_range, kde_values_rr, color='sandybrown')
+            
+        if len(isize_orient_dict['ff']) > 1:
+            kde_ff = gaussian_kde(isize_orient_dict['ff'])
+            kde_ff.set_bandwidth(bw_method=kde_ff.factor / 10.)
+            kde_values_ff = kde_ff(x_range)
+            ax_orient_ill.plot(x_range, kde_values_ff, color='cadetblue')
+            
+        if len(isize_orient_dict['rf']) > 1:
+            kde_rf = gaussian_kde(isize_orient_dict['rf'])
+            kde_rf.set_bandwidth(bw_method=kde_rf.factor / 10.)
+            kde_values_rf = kde_rf(x_range)
+            ax_orient_ill.plot(x_range, kde_values_rf, color='midnightblue')
+        
+        ax_orient_ill.set_xlim(left=0, right=cov.iloc[-1, 1])
+        ax_orient_ill.set_yticks([])
+        ax_orient_ill.axvline(x=cov_padding, color='black', linewidth=1, linestyle='--')
+        ax_orient_ill.axvline(x=cov.iloc[-1, 1] - cov_padding, color='black', linewidth=1, linestyle='--')
+        
     
     plt.rcParams['hatch.linewidth'] = 0.5
     cmap = cm.inferno.reversed()
@@ -219,6 +266,7 @@ def plot_breakpoints_ill(bam_filename_ill: str, rep_df: pd.DataFrame, chrom: str
                 color = 'lightgrey'
             ax_svs_ill.hlines(y=y_pos, xmin=sv_neighbourhood_ill_df.loc[i, 'start'], xmax=sv_neighbourhood_ill_df.loc[i, 'end'], linewidth=4, color=color)
             ax_svs_ill.text(10, y_pos, sv_neighbourhood_ill_df.loc[i, 'caller'], fontsize=7, horizontalalignment='left', verticalalignment='center', color='black', weight='bold')
+    
     
 
     ### Breakpoints ILL

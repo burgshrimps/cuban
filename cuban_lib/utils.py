@@ -240,3 +240,66 @@ def compute_baseline_cov(bam_filename: str, chrom: str, n: int=1000, s: int=1000
         baseline_coverage_mean.append(np.mean(coverage))
         
     return np.median(baseline_coverage_mean)
+
+
+def compute_isize_orientation_dict(bam_filename: str, chrom: str, start: int, end: int, thr_min: int=50, thr_max: int=1000) -> dict:
+    """ Computes insert size distribution for a given region.
+
+    Args:
+        bam_filename (str): Filename of BAM file
+        chrom (str): Chromosome
+        start (int): Start position
+        end (int): End position
+        thr_min (int, optional): Lower threshold for insert size. Defaults to 50.
+        thr_max (int, optional): Upper threshold for insert size. Defaults to 1000.
+
+    Returns:
+        dict: List of low, high positions 
+    """    
+    
+    # Open BAM file
+    bam = pysam.AlignmentFile(bam_filename, 'rb')
+    
+    positions_exceed_min = []
+    positions_exceed_max = []
+    positions_rr = []
+    positions_ff = []
+    positions_rf = []
+
+    # Extract positions and insert sizes for the specified region
+    for read in bam.fetch(chrom, start, end):
+        if not read.is_unmapped:
+            
+            # Insert Size
+            if abs(read.template_length) > thr_max:
+                positions_exceed_max.append(read.reference_start)
+                
+            elif abs(read.template_length) < thr_min:
+                positions_exceed_min.append(read.reference_start)
+                
+            # Orientation RR
+            if read.is_reverse and read.mate_is_reverse:
+                positions_rr.append(read.reference_start)
+                
+            elif not read.is_reverse and not read.mate_is_reverse:
+                positions_ff.append(read.reference_start)
+                
+            elif read.is_read1 and read.is_reverse and not read.mate_is_reverse and read.template_length>0:
+                positions_rf.append(read.reference_start)
+                
+            elif read.is_read1 and not read.is_reverse and read.mate_is_reverse and read.template_length<0:
+                positions_rf.append(read.reference_start)
+                
+            elif read.is_read2 and not read.is_reverse and read.mate_is_reverse and read.template_length<0:
+                positions_rf.append(read.reference_start)
+                
+            elif read.is_read2 and read.is_reverse and not read.mate_is_reverse and read.template_length>0:
+                positions_rf.append(read.reference_start)
+                
+    positions_exceed_min = np.array(positions_exceed_min) - start
+    positions_exceed_max = np.array(positions_exceed_max) - start
+    positions_rr = np.array(positions_rr) - start
+    positions_ff = np.array(positions_ff) - start
+    positions_rf = np.array(positions_rf) - start
+    
+    return {'exceed_min': positions_exceed_min, 'exceed_max': positions_exceed_max, 'rr': positions_rr, 'ff': positions_ff, 'rf': positions_rf}
