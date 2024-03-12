@@ -143,7 +143,7 @@ def plot_breakpoints_ill(bam_filename_ill: str, rep_df: pd.DataFrame, chrom: str
         isize_orient_dict = compute_isize_orientation_dict(bam_filename_ill, chrom, max(1, leftbp - cov_padding), rightbp + cov_padding)
 
     ### Compute repeat overlap
-    rep_df = compute_rep_df(rep_df, chrom, leftbp, rightbp)
+    rep_df = compute_rep_df(rep_df, chrom, leftbp, rightbp, padding=padding)
 
     ### Plot options
     plt.rcParams["font.weight"] = "bold"
@@ -210,10 +210,14 @@ def plot_breakpoints_ill(bam_filename_ill: str, rep_df: pd.DataFrame, chrom: str
         x_range = np.linspace(0, cov.iloc[-1, 1], 1000)
         
         if len(isize_orient_dict['exceed_max'] > 1):
-            kde_max = gaussian_kde(isize_orient_dict['exceed_max'])
-            kde_max.set_bandwidth(bw_method=kde_max.factor / 10.)
-            kde_values_max = kde_max(x_range)
-            ax_isize_ill.plot(x_range, kde_values_max, color='black')
+            try:
+                kde_max = gaussian_kde(isize_orient_dict['exceed_max'])
+                kde_max.set_bandwidth(bw_method=kde_max.factor / 10.)
+                kde_values_max = kde_max(x_range)
+                ax_isize_ill.plot(x_range, kde_values_max, color='black')
+            except:
+                pass
+            
             ax_isize_ill.set_xlim(left=0, right=cov.iloc[-1, 1])
             ax_isize_ill.set_yticks([])
             ax_isize_ill.set_xticks([])
@@ -222,22 +226,31 @@ def plot_breakpoints_ill(bam_filename_ill: str, rep_df: pd.DataFrame, chrom: str
         
         ### Read Orientation Track
         if len(isize_orient_dict['rr']) > 1:
-            kde_rr = gaussian_kde(isize_orient_dict['rr'])
-            kde_rr.set_bandwidth(bw_method=kde_rr.factor / 10.)
-            kde_values_rr = kde_rr(x_range)
-            ax_orient_ill.plot(x_range, kde_values_rr, color='sandybrown')
+            try:
+                kde_rr = gaussian_kde(isize_orient_dict['rr'])
+                kde_rr.set_bandwidth(bw_method=kde_rr.factor / 10.)
+                kde_values_rr = kde_rr(x_range)
+                ax_orient_ill.plot(x_range, kde_values_rr, color='sandybrown')
+            except:
+                pass
             
         if len(isize_orient_dict['ff']) > 1:
-            kde_ff = gaussian_kde(isize_orient_dict['ff'])
-            kde_ff.set_bandwidth(bw_method=kde_ff.factor / 10.)
-            kde_values_ff = kde_ff(x_range)
-            ax_orient_ill.plot(x_range, kde_values_ff, color='cadetblue')
+            try:
+                kde_ff = gaussian_kde(isize_orient_dict['ff'])
+                kde_ff.set_bandwidth(bw_method=kde_ff.factor / 10.)
+                kde_values_ff = kde_ff(x_range)
+                ax_orient_ill.plot(x_range, kde_values_ff, color='cadetblue')
+            except:
+                pass
             
         if len(isize_orient_dict['rf']) > 1:
-            kde_rf = gaussian_kde(isize_orient_dict['rf'])
-            kde_rf.set_bandwidth(bw_method=kde_rf.factor / 10.)
-            kde_values_rf = kde_rf(x_range)
-            ax_orient_ill.plot(x_range, kde_values_rf, color='midnightblue')
+            try:
+                kde_rf = gaussian_kde(isize_orient_dict['rf'])
+                kde_rf.set_bandwidth(bw_method=kde_rf.factor / 10.)
+                kde_values_rf = kde_rf(x_range)
+                ax_orient_ill.plot(x_range, kde_values_rf, color='midnightblue')
+            except:
+                pass
         
         ax_orient_ill.set_xlim(left=0, right=cov.iloc[-1, 1])
         ax_orient_ill.set_yticks([])
