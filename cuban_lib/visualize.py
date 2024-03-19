@@ -13,7 +13,7 @@ import random
 from scipy.signal import savgol_filter
 from scipy.stats import gaussian_kde
 
-from cuban_lib.utils import compute_aln_matrix, pad_alignment_matrices, compute_cov_df, compute_rep_df, get_variant_neighbourhood, compute_isize_orientation_dict
+from cuban_lib.utils import compute_aln_matrix, pad_alignment_matrices, compute_cov_df, compute_rep_df, get_variant_neighbourhood, compute_isize_orientation_dict, add_comma_to_pos
 
 mpl.rcParams['agg.path.chunksize'] = 1000000
 pd.set_option('display.max_columns', None)
@@ -96,193 +96,237 @@ def add_mapq_overlay(aux_dict: dict, aln_matrix: np.array, ax: plt.axis, offset:
             pass
         
         
-def plot_breakpoints_ill(bam_filename_ill: str, rep_df: pd.DataFrame, chrom: str, leftbp: int, rightbp: int, padding: int=500, window: int=50, collapse_ins: bool=True, title: str=None, outfile: str=None, df_svs_ill: pd.DataFrame=None, ill_baseline_cov: float=None):
-    """ Generates Cuban Plot to visualize SVs in Illumina short-read data.
+def gather_data_ill(bam_name: str, chrom: str, start: int, end: int, window: int, padding: int, collapse_ins: bool, rep_df: pd.DataFrame) -> dict:
+    """ Gathers relevant sequencing data for one sample for a given region.
 
     Args:
-        bam_filename_ill (str): Filename of the BAM file
-        rep_df (pd.DataFrame): Table with repeat annotations
+        bam_name (str): Filename of the BAM file
         chrom (str): Chromosome
-        leftbp (int): Left breakpoint
-        rightbp (int): Right breakpoint
-        padding (int, optional): Padding to be added on both sides for coverage plot. Defaults to 500.
-        window (int, optional): Size of window around both sides of each breakpoint. Defaults to 50.
-        collapse_ins (bool, optional): If yes, collapse consecutive INS operations in the CIGAR string to one. Defaults to True.
-        title (str, optional): Title to be added to the plot. Defaults to None.
-        outfile (str, optional): Filename for the generated image. Defaults to None.
-        df_svs_ill (pd.DataFrame, optional): Table with other SV calls to add to the image. Defaults to None.
-        ill_baseline_cov (float, optional): Chromosomal baseline coverage. Defaults to None.
+        start (int): Start position
+        end (int): End position
+        window (int): Window around each breakpoint to collect CIGAR string information for.
+        padding (int): Padding around the SV to compute coverage.
+        collapse_ins (bool): Collapse insertions into one base.
+        rep_df (pd.DataFrame): Repeat dataframe
+
+    Returns:
+        dict: Dictionary containing the alignment matrix, coverage, repeat overlap, insert size outliers and discordant orientation.
     """    
     
+    ### Initialize result dictionary
+    result = dict()
+
     ### Load BAM file
-    bam = pysam.AlignmentFile(bam_filename_ill, 'rb')
-
+    bam = pysam.AlignmentFile(bam_name, 'rb')
+    
     ### Compute alignment matrix
-    aln_matrix_left, aux_dict_left = compute_aln_matrix(bam, chrom, leftbp - window, leftbp + window, collapse_ins=collapse_ins, size=2*window)
-    aln_matrix_right, aux_dict_right = compute_aln_matrix(bam, chrom, rightbp - window, rightbp + window, collapse_ins=collapse_ins, size=2*window)
+    aln_matrix_left, aux_dict_left = compute_aln_matrix(bam, chrom, start - window, start + window, collapse_ins=collapse_ins, size=2*window)
+    aln_matrix_right, aux_dict_right = compute_aln_matrix(bam, chrom, end - window, end + window, collapse_ins=collapse_ins, size=2*window)
     aln_matrix_left, aln_matrix_right = pad_alignment_matrices(aln_matrix_left, aln_matrix_right)
-
+    result['aln_matrix_left'] = aln_matrix_left
+    result['aux_dict_left'] = aux_dict_left 
+    result['aln_matrix_right'] = aln_matrix_right
+    result['aux_dict_right'] = aux_dict_right 
+    
     ### Concatenate alignment matrices
     aln_matrix_middle = np.ones((aln_matrix_left.shape[0], 50)) * -1
     aln_matrix = np.concatenate((aln_matrix_left, aln_matrix_middle, aln_matrix_right), axis=1)
-
+    result['aln_matrix'] = aln_matrix
+    
     ### Do not compute coverage if SV too big
-    if rightbp - leftbp < 5000000:
+    if end - start < 5000000:
         compute_cov = True
     else:
         compute_cov = False
-
+    result['compute_cov'] = compute_cov
+        
     ### Compute coverage
     if compute_cov:
-        cov_padding = max(padding, int((rightbp - leftbp) * 0.2))
-        cov, cov_minq = compute_cov_df(bam_filename_ill, chrom, max(1, leftbp - cov_padding), rightbp + cov_padding)
-        if rightbp - leftbp > 1000 and rightbp - leftbp < 100000:
-            cov_minq_smoothed = savgol_filter(cov_minq[2], int((rightbp - leftbp) * 0.05), 3)
+        cov_padding = max(padding, int((end - start) * 0.3))
+        cov, cov_minq = compute_cov_df(bam_name, chrom, max(1, start - cov_padding), end + cov_padding)
+        result['cov_padding'] = cov_padding
+        result['cov'] = cov
+        result['cov_minq'] = cov_minq
+        if end - start > 1000 and end - start < 100000:
+            cov_minq_smoothed = savgol_filter(cov_minq[2], int((end - start) * 0.05), 3)
+            result['cov_minq_smoothed'] = cov_minq_smoothed
             
         ### Compute insert size outliers and discordant orientation
-        isize_orient_dict = compute_isize_orientation_dict(bam_filename_ill, chrom, max(1, leftbp - cov_padding), rightbp + cov_padding)
-
+        isize_orient_dict = compute_isize_orientation_dict(bam_name, chrom, max(1, start - cov_padding), end + cov_padding)
+        result['isize_orient_dict'] = isize_orient_dict
+        
+        
     ### Compute repeat overlap
-    rep_df = compute_rep_df(rep_df, chrom, leftbp, rightbp, padding=padding)
-
-    ### Plot options
-    plt.rcParams["font.weight"] = "bold"
-    plt.rcParams["axes.labelweight"] = "bold"
-
-    colors = ['white', 'lightgrey', '#b7954b', '#5066a2', '#f0b6a0', '#6ac0b7', '#df624c', 'lightgrey', 'lightgrey']
-    fig = plt.figure(figsize=(25,11))
-    fig.patch.set_facecolor('white')
+    rep_df_sample = compute_rep_df(rep_df, chrom, start, end, padding=padding)
+    result['rep_df'] = rep_df_sample
     
-    if df_svs_ill is not None:
-        gs = gridspec.GridSpec(3, 4, height_ratios=[3,1,6], hspace=0.2, wspace=0.5)
-        ax_cov_ill = plt.subplot(gs[0, 0:4])
-        ax_svs_ill = plt.subplot(gs[1, 0:4])
-        ax_cig_ill = plt.subplot(gs[2, 0:4])
-        axs = [ax_cov_ill, ax_svs_ill, ax_cig_ill]
-        ax_svs_ill.axes.xaxis.set_visible(False)
-        ax_svs_ill.axes.yaxis.set_visible(False)
+    return result
+
+
+def plot_cov(start: int, end: int, data: dict, ax_cov_ill: plt.Axes, padding: int, baseline_cov: float=None):
+    """ Plots coverage for a given region.
+
+    Args:
+        start (int): Start position
+        end (int): End position
+        data (dict): Sequencing data, result of gather_data_ill
+        ax_cov_ill (plt.Axes): Axes to plot on
+        padding (int): Padding around the SV to compute coverage.
+        baseline_cov (float, optional): Chromosomal average coverage. Defaults to None.
+    """    
+    
+    ### Extract data
+    cov = data['cov']
+    cov_minq = data['cov_minq']
+    
+    ### Plot 
+    ax_cov_ill.plot(cov_minq[1], cov_minq[2], color='#df624c', fillstyle='bottom')
+    ax_cov_ill.plot(cov[1], cov[2], color='grey', fillstyle='bottom')
+    if end - start > 1000 and end - start < 100000:
+        cov_minq_smoothed = data['cov_minq_smoothed']
+        ax_cov_ill.plot(cov_minq[1], cov_minq_smoothed, color='black')
+    if baseline_cov is not None:
+        ax_cov_ill.axhline(y=baseline_cov, color='#df624c', linewidth=1, linestyle='--')
+    ax_cov_ill.fill_between(cov[1], cov[2], color="grey", alpha=0.2)
+    ax_cov_ill.axvline(x=padding, color='black', linewidth=1, linestyle='--')
+    ax_cov_ill.axvline(x=cov.iloc[-1, 1] - padding, color='black', linewidth=1, linestyle='--')
+    ax_cov_ill.set_xlim(left=0, right=cov.iloc[-1, 1])
+    ax_cov_ill.set_xticks([])
+    yticks = ax_cov_ill.get_yticks()
+    yticks_filtered = yticks[yticks >= 0]
+    ax_cov_ill.set_yticks(yticks_filtered)
+    ax_cov_ill.set_ylim(bottom=-70, top=min(yticks[-1], 4 * baseline_cov))
+    
+    
+def plot_rep(data: dict, ax_cov_ill: plt.Axes, rep_y_pos_map: dict):
+    """ Plots repeat overlap.
+
+    Args:
+        data (dict): Sequencing data, result of gather_data_ill
+        ax_cov_ill (plt.Axes): Axes to plot on
+        rep_y_pos_map (dict): Dictionary mapping repeat types to y positions and colors.
+    """    
+    
+    ### Extract data
+    rep_df = data['rep_df']
+    
+    ### Plot
+    for i in range(len(rep_df)):
+        try:
+            ax_cov_ill.hlines(y=rep_y_pos_map[rep_df.loc[i, 'repClass']][0], xmin=rep_df.loc[i, 'genoStart'], xmax=rep_df.loc[i, 'genoEnd'], linewidth=4, color=rep_y_pos_map[rep_df.loc[i, 'repClass']][1])
+        except KeyError: # repeat type not in rep_y_pos_map
+            continue
+    
+    ### Add repeat labels
+    for key in rep_y_pos_map.keys():
+        ax_cov_ill.text(10, rep_y_pos_map[key][0]-2, key.replace('_', ' '), fontsize=7, horizontalalignment='left', verticalalignment='center', color='black', weight='bold')
         
-        for spine in ax_svs_ill.spines.values():
-            spine.set_visible(False)
         
+def plot_isize(data: dict, ax_isize_ill: plt.Axes, padding: int):
+    """ Plots insert size outliers.
+
+    Args:
+        data (dict): Sequencing data, result of gather_data_ill
+        ax_isize_ill (plt.Axes): Axes to plot on
+        padding (int): Padding around the SV to compute coverage.
+    """    
+    
+    ### Extract data
+    isize_orient_dict = data['isize_orient_dict']
+    cov = data['cov']
+    x_range = np.linspace(0, cov.iloc[-1, 1], 1000)
+    
+    ### Plot
+    if len(isize_orient_dict['exceed_max'] > 1):
+        try:
+            kde_max = gaussian_kde(isize_orient_dict['exceed_max'])
+            kde_max.set_bandwidth(bw_method=kde_max.factor / 10.)
+            kde_values_max = kde_max(x_range)
+            ax_isize_ill.plot(x_range, kde_values_max, color='black')
+        except:
+            pass
     else:
-        gs = gridspec.GridSpec(4, 4, height_ratios=[3,0.5,0.5,7], hspace=0.2, wspace=0.5)
-        ax_cov_ill = plt.subplot(gs[0, 0:4])
-        ax_isize_ill = plt.subplot(gs[1, 0:4])
-        ax_orient_ill = plt.subplot(gs[2, 0:4])
-        ax_cig_ill = plt.subplot(gs[3, 0:4])
-        axs = [ax_cov_ill, ax_isize_ill, ax_orient_ill, ax_cig_ill]
+        ax_isize_ill.plot(x_range, np.zeros(1000), color='black')
         
-    
-    for ax in axs:
-        ax.grid(False)
-        ax.set_facecolor('white')
-        
-    ax_cig_ill.axes.yaxis.set_visible(False)
-    
-    if compute_cov:
-        ### Coverage 
-        ax_cov_ill.plot(cov_minq[1], cov_minq[2], color='#df624c', fillstyle='bottom')
-        ax_cov_ill.plot(cov[1], cov[2], color='grey', fillstyle='bottom')
-        if rightbp - leftbp > 1000 and rightbp - leftbp < 100000:
-            ax_cov_ill.plot(cov_minq[1], cov_minq_smoothed, color='black')
-        if ill_baseline_cov is not None:
-            ax_cov_ill.axhline(y=ill_baseline_cov, color='#df624c', linewidth=1, linestyle='--')
-        ax_cov_ill.fill_between(cov[1], cov[2], color="grey", alpha=0.2)
-        ax_cov_ill.axvline(x=cov_padding, color='black', linewidth=1, linestyle='--')
-        ax_cov_ill.axvline(x=cov.iloc[-1, 1] - cov_padding, color='black', linewidth=1, linestyle='--')
-        ax_cov_ill.set_ylim(bottom=-70)
-        ax_cov_ill.set_xlim(left=0, right=cov.iloc[-1, 1])
-        ax_cov_ill.set_xticks([])
-        
-        ### Repeat track 
-        for i in range(len(rep_df)):
-            try:
-                ax_cov_ill.hlines(y=rep_y_pos_map[rep_df.loc[i, 'repClass']][0], xmin=rep_df.loc[i, 'genoStart'], xmax=rep_df.loc[i, 'genoEnd'], linewidth=4, color=rep_y_pos_map[rep_df.loc[i, 'repClass']][1])
-            except KeyError: # repeat type not in rep_y_pos_map
-                continue
-        
-        # Add repeat labels
-        for key in rep_y_pos_map.keys():
-            ax_cov_ill.text(10, rep_y_pos_map[key][0]-2, key.replace('_', ' '), fontsize=7, horizontalalignment='left', verticalalignment='center', color='black', weight='bold')
-    
-        ### Insert size track
-        x_range = np.linspace(0, cov.iloc[-1, 1], 1000)
-        
-        if len(isize_orient_dict['exceed_max'] > 1):
-            try:
-                kde_max = gaussian_kde(isize_orient_dict['exceed_max'])
-                kde_max.set_bandwidth(bw_method=kde_max.factor / 10.)
-                kde_values_max = kde_max(x_range)
-                ax_isize_ill.plot(x_range, kde_values_max, color='black')
-            except:
-                pass
-            
-            ax_isize_ill.set_xlim(left=0, right=cov.iloc[-1, 1])
-            ax_isize_ill.set_yticks([])
-            ax_isize_ill.set_xticks([])
-            ax_isize_ill.axvline(x=cov_padding, color='black', linewidth=1, linestyle='--')
-            ax_isize_ill.axvline(x=cov.iloc[-1, 1] - cov_padding, color='black', linewidth=1, linestyle='--')
-        
-        ### Read Orientation Track
-        if len(isize_orient_dict['rr']) > 1:
-            try:
-                kde_rr = gaussian_kde(isize_orient_dict['rr'])
-                kde_rr.set_bandwidth(bw_method=kde_rr.factor / 10.)
-                kde_values_rr = kde_rr(x_range)
-                ax_orient_ill.plot(x_range, kde_values_rr, color='sandybrown')
-            except:
-                pass
-            
-        if len(isize_orient_dict['ff']) > 1:
-            try:
-                kde_ff = gaussian_kde(isize_orient_dict['ff'])
-                kde_ff.set_bandwidth(bw_method=kde_ff.factor / 10.)
-                kde_values_ff = kde_ff(x_range)
-                ax_orient_ill.plot(x_range, kde_values_ff, color='cadetblue')
-            except:
-                pass
-            
-        if len(isize_orient_dict['rf']) > 1:
-            try:
-                kde_rf = gaussian_kde(isize_orient_dict['rf'])
-                kde_rf.set_bandwidth(bw_method=kde_rf.factor / 10.)
-                kde_values_rf = kde_rf(x_range)
-                ax_orient_ill.plot(x_range, kde_values_rf, color='midnightblue')
-            except:
-                pass
-        
-        ax_orient_ill.set_xlim(left=0, right=cov.iloc[-1, 1])
-        ax_orient_ill.set_yticks([])
-        ax_orient_ill.axvline(x=cov_padding, color='black', linewidth=1, linestyle='--')
-        ax_orient_ill.axvline(x=cov.iloc[-1, 1] - cov_padding, color='black', linewidth=1, linestyle='--')
-        
-    
-    plt.rcParams['hatch.linewidth'] = 0.5
-    cmap = cm.inferno.reversed()
-    
-    ### SV Neighbourhood ILL
-    if df_svs_ill is not None:
-        if compute_cov:
-            ax_svs_ill.set_xlim(left=0, right=rightbp - leftbp + 2 * cov_padding)
-            sv_neighbourhood_ill_df = get_variant_neighbourhood(df_svs_ill, chrom, leftbp, rightbp, padding=cov_padding)
-        else:
-            ax_svs_ill.set_xlim(left=0, right=rightbp - leftbp + 2 * padding)
-            sv_neighbourhood_ill_df = get_variant_neighbourhood(df_svs_ill, chrom, leftbp, rightbp, padding=padding)
-            
-        for i in range(len(sv_neighbourhood_ill_df)):
-            y_pos = i * -8
-            sv_qual = sv_neighbourhood_ill_df.loc[i, 'dicast_qual']
-            if not np.isnan(sv_qual):
-                color = cmap(sv_qual)
-            else:
-                color = 'lightgrey'
-            ax_svs_ill.hlines(y=y_pos, xmin=sv_neighbourhood_ill_df.loc[i, 'start'], xmax=sv_neighbourhood_ill_df.loc[i, 'end'], linewidth=4, color=color)
-            ax_svs_ill.text(10, y_pos, sv_neighbourhood_ill_df.loc[i, 'caller'], fontsize=7, horizontalalignment='left', verticalalignment='center', color='black', weight='bold')
+    ax_isize_ill.set_xlim(left=0, right=cov.iloc[-1, 1])
+    ax_isize_ill.set_yticks([])
+    ax_isize_ill.set_xticks([])
+    ax_isize_ill.axvline(x=padding, color='black', linewidth=1, linestyle='--')
+    ax_isize_ill.axvline(x=cov.iloc[-1, 1] - padding, color='black', linewidth=1, linestyle='--')
     
     
+def plot_orient(data: dict, ax_orient_ill: plt.Axes, padding: int):
+    """ Plots discordant orientation.
 
-    ### Breakpoints ILL
+    Args:
+        data (dict): Sequencing data, result of gather_data_ill
+        ax_orient_ill (plt.Axes): Axes to plot on
+        padding (int): Padding around the SV to compute coverage.
+    """    
+    
+    ### Extract data
+    isize_orient_dict = data['isize_orient_dict']
+    cov = data['cov']
+    x_range = np.linspace(0, cov.iloc[-1, 1], 1000)
+    
+    ### Plot
+    if len(isize_orient_dict['rr']) > 1:
+        try:
+            kde_rr = gaussian_kde(isize_orient_dict['rr'])
+            kde_rr.set_bandwidth(bw_method=kde_rr.factor / 10.)
+            kde_values_rr = kde_rr(x_range)
+            ax_orient_ill.plot(x_range, kde_values_rr, color='sandybrown')
+        except:
+            pass
+    else:
+        ax_orient_ill.plot(x_range, np.zeros(1000), color='sandybrown')
+        
+    if len(isize_orient_dict['ff']) > 1:
+        try:
+            kde_ff = gaussian_kde(isize_orient_dict['ff'])
+            kde_ff.set_bandwidth(bw_method=kde_ff.factor / 10.)
+            kde_values_ff = kde_ff(x_range)
+            ax_orient_ill.plot(x_range, kde_values_ff, color='cadetblue')
+        except:
+            pass
+    else:
+        ax_orient_ill.plot(x_range, np.zeros(1000), color='cadetblue')
+        
+    if len(isize_orient_dict['rf']) > 1:
+        try:
+            kde_rf = gaussian_kde(isize_orient_dict['rf'])
+            kde_rf.set_bandwidth(bw_method=kde_rf.factor / 10.)
+            kde_values_rf = kde_rf(x_range)
+            ax_orient_ill.plot(x_range, kde_values_rf, color='midnightblue')
+        except:
+            pass
+    else:
+        ax_orient_ill.plot(x_range, np.zeros(1000), color='midnightblue')
+        
+    ax_orient_ill.set_xlim(left=0, right=cov.iloc[-1, 1])
+    ax_orient_ill.set_yticks([])
+    ax_orient_ill.axvline(x=padding, color='black', linewidth=1, linestyle='--')
+    ax_orient_ill.axvline(x=cov.iloc[-1, 1] - padding, color='black', linewidth=1, linestyle='--')
+    
+    
+def plot_cigar(data: dict, ax_cig_ill: plt.Axes, colors: list, window: int):
+    """ Plots CIGAR string information around breakpoints.
+
+    Args:
+        data (dict): Sequencing data, result of gather_data_ill
+        ax_cig_ill (plt.Axes): Axes to plot on
+        colors (list): List of colors for the alignment matrix
+        window (int): Window around each breakpoint to collect CIGAR string information for.
+    """    
+    
+    ### Extract data
+    aln_matrix = data['aln_matrix']
+    aux_dict_left = data['aux_dict_left']
+    aln_matrix_left = data['aln_matrix_left']
+    aux_dict_right = data['aux_dict_right']
+    aln_matrix_right = data['aln_matrix_right']
+    
+    ### Plot
     im = ax_cig_ill.imshow(aln_matrix, cmap=ListedColormap(colors), vmin=-1, vmax=8)
 
     ### Left Breakpoint 
@@ -293,7 +337,7 @@ def plot_breakpoints_ill(bam_filename_ill: str, rep_df: pd.DataFrame, chrom: str
     add_disco_overlay(aux_dict_left, aln_matrix_left, ax_cig_ill, 'rf')
     add_splitread_overlay(aux_dict_left, aln_matrix_left, ax_cig_ill)
 
-    ### Right Breakpoint 1
+    ### Right Breakpoint
     ax_cig_ill.axvline(x=window+2.5*window, color='black', linewidth=1, linestyle='--')
     add_mapq_overlay(aux_dict_right, aln_matrix_right, ax_cig_ill, offset=2.5*window)
     add_disco_overlay(aux_dict_right, aln_matrix_right, ax_cig_ill, 'rr', offset=2.5*window)
@@ -301,7 +345,7 @@ def plot_breakpoints_ill(bam_filename_ill: str, rep_df: pd.DataFrame, chrom: str
     add_disco_overlay(aux_dict_right, aln_matrix_right, ax_cig_ill, 'rf', offset=2.5*window)
     add_splitread_overlay(aux_dict_right, aln_matrix_right, ax_cig_ill, offset=2.5*window)
 
-    ### Read Connections 1
+    ### Read Connections
     df_aux_left = pd.DataFrame(aux_dict_left['name'], columns=['name']).reset_index()
     df_aux_right = pd.DataFrame(aux_dict_right['name'], columns=['name']).reset_index()
     df_aux_merge = df_aux_left.merge(df_aux_right, on='name', how='left', suffixes=('_left', '_right'))
@@ -321,10 +365,73 @@ def plot_breakpoints_ill(bam_filename_ill: str, rep_df: pd.DataFrame, chrom: str
     ax_cig_ill.axvline(x=(window*2)-0.5, color='lightgrey', linewidth=1, linestyle='--')
     ax_cig_ill.axvline(x=(window*2)+49.5, color='lightgrey', linewidth=1, linestyle='--')
     ax_cig_ill.set_xticks([0, window/2, window, window*1.5, 2*window, 2*window+50, 2*window+50+window/2, 2*window+50+window, 2*window+50+window*1.5, 2*window+50+2*window], labels=[str(-int(window)), str(-int(window/2)), '0', str(int(window/2)), str(int(window)), str(-int(window)), str(-int(window/2)), '0', str(int(window/2)), str(int(window))])
+    ax_cig_ill.set_yticks([])
+    
+    
+def plot_breakpoints_ill(samples: dict, rep_df: pd.DataFrame, chrom: str, start: int, end: int, padding: int=1500, window: int=100, collapse_ins: bool=True, outfile: str=None):
+    """ Visualizes alignment information around a structural variant for one or multiple samples.
 
-    ### Output
-    if title != None:
-        ax_cov_ill.set_title(title)
+    Args:
+        samples (dict): Dictionary containing sample information. Keys are sample names and values are dictionaries containing family status, disease status, BAM filename and baseline coverage.
+        rep_df (pd.DataFrame): Repeat dataframe
+        chrom (str): Chromosome
+        start (int): Start position
+        end (int): End position
+        padding (int, optional): Padding around the SV to compute coverage.. Defaults to 1500.
+        window (int, optional): Window around each breakpoint to collect CIGAR string information for.. Defaults to 100.
+        collapse_ins (bool, optional): Collapse insertions into one base.. Defaults to True.
+        outfile (str, optional): Output filename. Defaults to None.
+    """    
+    
+    ### Set up figure
+    colors = ['white', 'lightgrey', '#b7954b', '#5066a2', '#f0b6a0', '#6ac0b7', '#df624c', 'lightgrey', 'lightgrey']
+    num_samples = len(samples)
+    fig = plt.figure(figsize=(25, 11 * num_samples))
+    gs = gridspec.GridSpec(5 * num_samples, 4, height_ratios=[1,3,0.5,0.5,7] * num_samples, hspace=0.2, wspace=0.5)
+    plt.rcParams['hatch.linewidth'] = 0.5
+    plt.rcParams["font.weight"] = "bold"
+    plt.rcParams["axes.labelweight"] = "bold"
+    
+    ### Set up parameters
+    padding = max(padding, int((end - start) * 0.2))
+    
+    for i, sample in enumerate(samples):
+        ### Get sample info
+        name = sample
+        family_status = samples[sample]['family_status']
+        disease_status = samples[sample]['disease_status']
+        bam_name = samples[sample]['bam_name']
+        baseline_cov = samples[sample]['baseline_cov']
+        
+        ### Extract Sequencing Data
+        data = gather_data_ill(bam_name, chrom, start, end, window, padding, collapse_ins, rep_df)  
+        
+        ### Define sample axes
+        ax_title = plt.subplot(gs[5 * i, 0:4])
+        ax_cov_ill = plt.subplot(gs[(5 * i) + 1, 0:4])
+        ax_isize_ill = plt.subplot(gs[(5 * i) + 2, 0:4])
+        ax_orient_ill = plt.subplot(gs[(5 * i) + 3, 0:4])
+        ax_cig_ill = plt.subplot(gs[(5 * i) + 4, 0:4])
+        axs = [ax_title, ax_cov_ill, ax_isize_ill, ax_orient_ill, ax_cig_ill]
+        for ax in axs:
+            ax.grid(False)
+            ax.set_facecolor('white')
+        
+        ### Create plots for current sample
+        plot_cov(start, end, data, ax_cov_ill, padding, baseline_cov)
+        plot_rep(data, ax_cov_ill, rep_y_pos_map)
+        plot_isize(data, ax_isize_ill, padding)
+        plot_orient(data, ax_orient_ill, padding)
+        plot_cigar(data, ax_cig_ill, colors, window)
+        
+        ### Set title
+        if i == 0:
+            sv_len = end - start
+            ax_title.text(0.5, 0.5, chrom + ':' + add_comma_to_pos(start) + '-' + add_comma_to_pos(end) + ' (' + add_comma_to_pos(sv_len) + ' bp)', horizontalalignment='center', verticalalignment='center', fontsize=12, weight='bold')
+        ax_title.text(0.5, 0, name + ' (' + family_status.capitalize() + ', ' + disease_status.capitalize() + ')', horizontalalignment='center', verticalalignment='center', fontsize=12, weight='bold')
+        ax_title.axis('off')
+    
+    ### Save figure
     if outfile != None:
         try:
             plt.savefig(outfile, dpi=300, bbox_inches='tight')
@@ -336,7 +443,7 @@ def plot_breakpoints_ill(bam_filename_ill: str, rep_df: pd.DataFrame, chrom: str
     else:
         plt.show()
 
-
+    
 def plot_breakpoints_ill_pb(bam_filename_ill, bam_filename_pb, rep_df, chrom, leftbp, rightbp, padding=500, window=50, collapse_ins=True, title=None, outfile=None, df_svs_ill=None, df_svs_pb=None, ill_baseline_cov=None, pb_baseline_cov=None):
     """ Plots coverage and alignments around breakpoints. """
     ### Load BAM file

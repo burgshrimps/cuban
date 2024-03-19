@@ -39,7 +39,7 @@ def compute_aln_matrix(bam, chrom, start, stop, collapse_ins=True, size=100):
             aux_dict['name'].append(read.query_name)
             if read.has_tag('SA'):
                 aux_dict['split_idx'].append(idx)
-            if read.mapping_quality < 5:
+            if read.mapping_quality < 30:
                 aux_dict['low_mapq_idx'].append(idx)
             if read.has_tag('HP'):
                 aux_dict['haplotag_idx'].append(read.get_tag('HP'))
@@ -149,7 +149,7 @@ def pad_alignment_matrices(aln_matrix_left, aln_matrix_right):
     return aln_matrix_left, aln_matrix_right
 
 
-def compute_cov_df(bam_filename, chrom, start, stop, minq=20):
+def compute_cov_df(bam_filename, chrom, start, stop, minq=30):
     """ Computes coverage for given region. Coverage is computed twice. Once for all reads and once for reads with
     mapping quality >= minq. """
     cov = pd.DataFrame([x.split('\t') for x in pysam.depth(bam_filename, '-r', chrom + ':' + str(start) + '-' + str(stop), '-a').split('\n')[:-1]])
@@ -198,6 +198,9 @@ def add_comma_to_pos(pos):
         newstr = pos[::-1][i] + newstr
         if i % 3 == 2:
             newstr = ',' + newstr
+    
+    if newstr[0] == ',':
+        newstr = newstr[1:]
     return newstr
 
 
