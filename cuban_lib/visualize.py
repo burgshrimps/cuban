@@ -142,7 +142,7 @@ def gather_data_ill(bam_name: str, chrom: str, start: int, end: int, window: int
         
     ### Compute coverage
     if compute_cov:
-        cov_padding = max(padding, int((end - start) * 0.3))
+        cov_padding = max(padding, int((end - start) * 0.2))
         cov, cov_minq = compute_cov_df(bam_name, chrom, max(1, start - cov_padding), end + cov_padding)
         result['cov_padding'] = cov_padding
         result['cov'] = cov
