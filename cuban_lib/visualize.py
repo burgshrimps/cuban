@@ -120,8 +120,8 @@ def gather_data_ill(bam_name: str, chrom: str, start: int, end: int, window: int
     bam = pysam.AlignmentFile(bam_name, 'rb')
     
     ### Compute alignment matrix
-    aln_matrix_left, aux_dict_left = compute_aln_matrix(bam, chrom, start - window, start + window, collapse_ins=collapse_ins, size=2*window)
-    aln_matrix_right, aux_dict_right = compute_aln_matrix(bam, chrom, end - window, end + window, collapse_ins=collapse_ins, size=2*window)
+    aln_matrix_left, aux_dict_left = compute_aln_matrix(bam, chrom, start - window, start + window, collapse_ins=collapse_ins)
+    aln_matrix_right, aux_dict_right = compute_aln_matrix(bam, chrom, end - window, end + window, collapse_ins=collapse_ins)
     aln_matrix_left, aln_matrix_right = pad_alignment_matrices(aln_matrix_left, aln_matrix_right)
     result['aln_matrix_left'] = aln_matrix_left
     result['aux_dict_left'] = aux_dict_left 
@@ -386,20 +386,32 @@ def plot_breakpoints_ill(samples: dict, rep_df: pd.DataFrame, chrom: str, start:
     ### Set up figure
     colors = ['white', 'lightgrey', '#b7954b', '#5066a2', '#f0b6a0', '#6ac0b7', '#df624c', 'lightgrey', 'lightgrey']
     num_samples = len(samples)
+    num_rows = 0
+    height_ratios = []
+    for sample in samples:
+        technology = samples[sample]['technology']
+        if technology == 'ill':
+            num_rows += 5
+            height_ratios.extend([1,3,0.5,0.5,7])
+        elif technology == 'pb':
+            num_rows += 3
+            height_ratios.extend([1,3,7])
+        
     fig = plt.figure(figsize=(25, 11 * num_samples))
-    gs = gridspec.GridSpec(5 * num_samples, 4, height_ratios=[1,3,0.5,0.5,7] * num_samples, hspace=0.2, wspace=0.5)
+    gs = gridspec.GridSpec(num_rows, 4, height_ratios=height_ratios, hspace=0.2, wspace=0.5)
     plt.rcParams['hatch.linewidth'] = 0.5
     plt.rcParams["font.weight"] = "bold"
     plt.rcParams["axes.labelweight"] = "bold"
     
     ### Set up parameters
     padding = max(padding, int((end - start) * 0.2))
-    
-    for i, sample in enumerate(samples):
+    i = 0
+    for sample in samples:
         ### Get sample info
         name = sample
         family_status = samples[sample]['family_status']
         disease_status = samples[sample]['disease_status']
+        technology = samples[sample]['technology']
         bam_name = samples[sample]['bam_name']
         baseline_cov = samples[sample]['baseline_cov']
         
@@ -407,22 +419,43 @@ def plot_breakpoints_ill(samples: dict, rep_df: pd.DataFrame, chrom: str, start:
         data = gather_data_ill(bam_name, chrom, start, end, window, padding, collapse_ins, rep_df)  
         
         ### Define sample axes
-        ax_title = plt.subplot(gs[5 * i, 0:4])
-        ax_cov_ill = plt.subplot(gs[(5 * i) + 1, 0:4])
-        ax_isize_ill = plt.subplot(gs[(5 * i) + 2, 0:4])
-        ax_orient_ill = plt.subplot(gs[(5 * i) + 3, 0:4])
-        ax_cig_ill = plt.subplot(gs[(5 * i) + 4, 0:4])
-        axs = [ax_title, ax_cov_ill, ax_isize_ill, ax_orient_ill, ax_cig_ill]
-        for ax in axs:
-            ax.grid(False)
-            ax.set_facecolor('white')
-        
-        ### Create plots for current sample
-        plot_cov(start, end, data, ax_cov_ill, padding, baseline_cov)
-        plot_rep(data, ax_cov_ill, rep_y_pos_map)
-        plot_isize(data, ax_isize_ill, padding)
-        plot_orient(data, ax_orient_ill, padding)
-        plot_cigar(data, ax_cig_ill, colors, window)
+        if technology == 'ill':
+            ax_title = plt.subplot(gs[i, 0:4])
+            ax_cov_ill = plt.subplot(gs[i + 1, 0:4])
+            ax_isize_ill = plt.subplot(gs[i + 2, 0:4])
+            ax_orient_ill = plt.subplot(gs[i + 3, 0:4])
+            ax_cig_ill = plt.subplot(gs[i + 4, 0:4])
+            axs = [ax_title, ax_cov_ill, ax_isize_ill, ax_orient_ill, ax_cig_ill]
+            for ax in axs:
+                ax.grid(False)
+                ax.set_facecolor('white')
+            
+            ### Create plots for current sample
+            plot_cov(start, end, data, ax_cov_ill, padding, baseline_cov)
+            plot_rep(data, ax_cov_ill, rep_y_pos_map)
+            plot_isize(data, ax_isize_ill, padding)
+            plot_orient(data, ax_orient_ill, padding)
+            plot_cigar(data, ax_cig_ill, colors, window)
+            
+            ### Update index
+            i += 5
+            
+        elif technology == 'pb':
+            ax_title = plt.subplot(gs[i, 0:4])
+            ax_cov_pb = plt.subplot(gs[i + 1, 0:4])
+            ax_cig_pb = plt.subplot(gs[i + 2, 0:4])
+            axs = [ax_title, ax_cov_pb, ax_cig_pb]
+            for ax in axs:
+                ax.grid(False)
+                ax.set_facecolor('white')
+            
+            ### Create plots for current sample
+            plot_cov(start, end, data, ax_cov_pb, padding, baseline_cov)
+            plot_rep(data, ax_cov_pb, rep_y_pos_map)
+            plot_cigar(data, ax_cig_pb, colors, window)
+            
+            ### Update index
+            i += 3
         
         ### Set title
         if i == 0:

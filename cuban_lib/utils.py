@@ -16,8 +16,9 @@ def cigartuples_to_array(cigartuples):
     return np.array(cigar_array)
 
 
-def compute_aln_matrix(bam, chrom, start, stop, collapse_ins=True, size=100):
+def compute_aln_matrix(bam, chrom, start, stop, collapse_ins=True):
     """ Computes alignment matrix consisting of CIGAR integers for a given region. """
+    size = stop - start
     reads = []
     for read in bam.fetch(chrom, max(1, start), stop):
         if not read.is_unmapped:
