@@ -368,12 +368,13 @@ def plot_cigar(data: dict, ax_cig_ill: plt.Axes, colors: list, window: int):
     ax_cig_ill.set_yticks([])
     
     
-def plot_breakpoints_ill(samples: dict, rep_df: pd.DataFrame, chrom: str, start: int, end: int, padding: int=1500, window: int=100, collapse_ins: bool=True, outfile: str=None):
+def plot_breakpoints_ill(samples: dict, rep_df: pd.DataFrame, sv_type: str, chrom: str, start: int, end: int, padding: int=1500, window: int=100, collapse_ins: bool=True, outfile: str=None):
     """ Visualizes alignment information around a structural variant for one or multiple samples.
 
     Args:
         samples (dict): Dictionary containing sample information. Keys are sample names and values are dictionaries containing family status, disease status, BAM filename and baseline coverage.
         rep_df (pd.DataFrame): Repeat dataframe
+        sv_type (str): Type of the structural variant
         chrom (str): Chromosome
         start (int): Start position
         end (int): End position
@@ -406,6 +407,7 @@ def plot_breakpoints_ill(samples: dict, rep_df: pd.DataFrame, chrom: str, start:
     ### Set up parameters
     padding = max(padding, int((end - start) * 0.2))
     i = 0
+    plotted_main_title = False
     for sample in samples:
         ### Get sample info
         name = sample
@@ -458,9 +460,10 @@ def plot_breakpoints_ill(samples: dict, rep_df: pd.DataFrame, chrom: str, start:
             i += 3
         
         ### Set title
-        if i == 0:
+        if not plotted_main_title:
             sv_len = end - start
-            ax_title.text(0.5, 0.5, chrom + ':' + add_comma_to_pos(start) + '-' + add_comma_to_pos(end) + ' (' + add_comma_to_pos(sv_len) + ' bp)', horizontalalignment='center', verticalalignment='center', fontsize=12, weight='bold')
+            ax_title.text(0.5, 0.5, sv_type + ' ' + chrom + ':' + add_comma_to_pos(start) + '-' + add_comma_to_pos(end) + ' (' + add_comma_to_pos(sv_len) + ' bp)', horizontalalignment='center', verticalalignment='center', fontsize=12, weight='bold')
+            plotted_main_title = True
         ax_title.text(0.5, 0, name + ' (' + family_status.capitalize() + ', ' + disease_status.capitalize() + ')', horizontalalignment='center', verticalalignment='center', fontsize=12, weight='bold')
         ax_title.axis('off')
     
