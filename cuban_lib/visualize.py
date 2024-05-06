@@ -144,6 +144,7 @@ def gather_data_ill(bam_name: str, chrom: str, start: int, end: int, window: int
     if compute_cov:
         cov_padding = max(padding, int((end - start) * 0.2))
         cov, cov_minq = compute_cov_df(bam_name, chrom, max(1, start - cov_padding), end + cov_padding)
+        
         result['cov_padding'] = cov_padding
         result['cov'] = cov
         result['cov_minq'] = cov_minq
@@ -309,7 +310,7 @@ def plot_orient(data: dict, ax_orient_ill: plt.Axes, padding: int):
     ax_orient_ill.axvline(x=cov.iloc[-1, 1] - padding, color='black', linewidth=1, linestyle='--')
     
     
-def plot_cigar(data: dict, ax_cig_ill: plt.Axes, colors: list, window: int):
+def plot_cigar(data: dict, ax_cig_ill: plt.Axes, colors: list, window: int, tech: str):
     """ Plots CIGAR string information around breakpoints.
 
     Args:
@@ -332,17 +333,19 @@ def plot_cigar(data: dict, ax_cig_ill: plt.Axes, colors: list, window: int):
     ### Left Breakpoint 
     ax_cig_ill.axvline(x=window, color='black', linewidth=1, linestyle='--')
     add_mapq_overlay(aux_dict_left, aln_matrix_left, ax_cig_ill)
-    add_disco_overlay(aux_dict_left, aln_matrix_left, ax_cig_ill, 'rr')
-    add_disco_overlay(aux_dict_left, aln_matrix_left, ax_cig_ill, 'ff')
-    add_disco_overlay(aux_dict_left, aln_matrix_left, ax_cig_ill, 'rf')
+    if tech == 'ill':
+        add_disco_overlay(aux_dict_left, aln_matrix_left, ax_cig_ill, 'rr')
+        add_disco_overlay(aux_dict_left, aln_matrix_left, ax_cig_ill, 'ff')
+        add_disco_overlay(aux_dict_left, aln_matrix_left, ax_cig_ill, 'rf')
     add_splitread_overlay(aux_dict_left, aln_matrix_left, ax_cig_ill)
 
     ### Right Breakpoint
     ax_cig_ill.axvline(x=window+2.5*window, color='black', linewidth=1, linestyle='--')
     add_mapq_overlay(aux_dict_right, aln_matrix_right, ax_cig_ill, offset=2.5*window)
-    add_disco_overlay(aux_dict_right, aln_matrix_right, ax_cig_ill, 'rr', offset=2.5*window)
-    add_disco_overlay(aux_dict_right, aln_matrix_right, ax_cig_ill, 'ff', offset=2.5*window)
-    add_disco_overlay(aux_dict_right, aln_matrix_right, ax_cig_ill, 'rf', offset=2.5*window)
+    if tech == 'ill':
+        add_disco_overlay(aux_dict_right, aln_matrix_right, ax_cig_ill, 'rr', offset=2.5*window)
+        add_disco_overlay(aux_dict_right, aln_matrix_right, ax_cig_ill, 'ff', offset=2.5*window)
+        add_disco_overlay(aux_dict_right, aln_matrix_right, ax_cig_ill, 'rf', offset=2.5*window)
     add_splitread_overlay(aux_dict_right, aln_matrix_right, ax_cig_ill, offset=2.5*window)
 
     ### Read Connections
@@ -433,11 +436,12 @@ def plot_breakpoints_ill(samples: dict, rep_df: pd.DataFrame, sv_type: str, chro
                 ax.set_facecolor('white')
             
             ### Create plots for current sample
-            plot_cov(start, end, data, ax_cov_ill, padding, baseline_cov)
-            plot_rep(data, ax_cov_ill, rep_y_pos_map)
-            plot_isize(data, ax_isize_ill, padding)
-            plot_orient(data, ax_orient_ill, padding)
-            plot_cigar(data, ax_cig_ill, colors, window)
+            if data['compute_cov']:
+                plot_cov(start, end, data, ax_cov_ill, padding, baseline_cov)
+                plot_rep(data, ax_cov_ill, rep_y_pos_map)
+                plot_isize(data, ax_isize_ill, padding)
+                plot_orient(data, ax_orient_ill, padding)
+            plot_cigar(data, ax_cig_ill, colors, window, 'ill')
             
             ### Update index
             i += 5
@@ -452,9 +456,10 @@ def plot_breakpoints_ill(samples: dict, rep_df: pd.DataFrame, sv_type: str, chro
                 ax.set_facecolor('white')
             
             ### Create plots for current sample
-            plot_cov(start, end, data, ax_cov_pb, padding, baseline_cov)
-            plot_rep(data, ax_cov_pb, rep_y_pos_map)
-            plot_cigar(data, ax_cig_pb, colors, window)
+            if data['compute_cov']:
+                plot_cov(start, end, data, ax_cov_pb, padding, baseline_cov)
+                plot_rep(data, ax_cov_pb, rep_y_pos_map)
+            plot_cigar(data, ax_cig_pb, colors, window, 'pb_clr')
             
             ### Update index
             i += 3
@@ -470,12 +475,12 @@ def plot_breakpoints_ill(samples: dict, rep_df: pd.DataFrame, sv_type: str, chro
     ### Save figure
     if outfile != None:
         try:
-            plt.savefig(outfile, dpi=300, bbox_inches='tight')
+            plt.savefig(outfile, dpi=96, bbox_inches='tight')
             plt.close()
         except OverflowError:
             plt.clf()
             plt.text(0.5, 0.5, 'Plotting not possible', ha='center', va='center')
-            plt.savefig(outfile, dpi=300, bbox_inches='tight')
+            plt.savefig(outfile, dpi=96, bbox_inches='tight')
     else:
         plt.show()
 
