@@ -197,6 +197,8 @@ def plot_cov(start: int, end: int, data: dict, ax_cov_ill: plt.Axes, padding: in
     yticks_filtered = yticks[yticks >= 0]
     ax_cov_ill.set_yticks(yticks_filtered)
     ax_cov_ill.set_ylim(bottom=-70, top=min(yticks[-1], 4 * baseline_cov))
+    ax_cov_ill.text(0, 1.05, 'Coverage', transform=ax_cov_ill.transAxes, ha='left',
+                    bbox=dict(boxstyle="round,pad=0.3", edgecolor='black', facecolor='white', linewidth=1.3))
     
     
 def plot_rep(data: dict, ax_cov_ill: plt.Axes, rep_y_pos_map: dict):
@@ -254,6 +256,8 @@ def plot_isize(data: dict, ax_isize_ill: plt.Axes, padding: int):
     ax_isize_ill.set_xticks([])
     ax_isize_ill.axvline(x=padding, color='black', linewidth=1, linestyle='--')
     ax_isize_ill.axvline(x=cov.iloc[-1, 1] - padding, color='black', linewidth=1, linestyle='--')
+    ax_isize_ill.text(0, 1.05, 'Insert Size Outliers', transform=ax_isize_ill.transAxes, ha='left',
+                      bbox=dict(boxstyle="round,pad=0.3", edgecolor='black', facecolor='white', linewidth=1.3))
     
     
 def plot_orient(data: dict, ax_orient_ill: plt.Axes, padding: int):
@@ -308,6 +312,8 @@ def plot_orient(data: dict, ax_orient_ill: plt.Axes, padding: int):
     ax_orient_ill.set_yticks([])
     ax_orient_ill.axvline(x=padding, color='black', linewidth=1, linestyle='--')
     ax_orient_ill.axvline(x=cov.iloc[-1, 1] - padding, color='black', linewidth=1, linestyle='--')
+    ax_orient_ill.text(0, 1.05, 'Discordant Read Pairs', transform=ax_orient_ill.transAxes, ha='left',
+                       bbox=dict(boxstyle="round,pad=0.3", edgecolor='black', facecolor='white', linewidth=1.3))
     
     
 def plot_cigar(data: dict, ax_cig_ill: plt.Axes, colors: list, window: int, tech: str):
@@ -369,6 +375,12 @@ def plot_cigar(data: dict, ax_cig_ill: plt.Axes, colors: list, window: int, tech
     ax_cig_ill.axvline(x=(window*2)+49.5, color='lightgrey', linewidth=1, linestyle='--')
     ax_cig_ill.set_xticks([0, window/2, window, window*1.5, 2*window, 2*window+50, 2*window+50+window/2, 2*window+50+window, 2*window+50+window*1.5, 2*window+50+2*window], labels=[str(-int(window)), str(-int(window/2)), '0', str(int(window/2)), str(int(window)), str(-int(window)), str(-int(window/2)), '0', str(int(window/2)), str(int(window))])
     ax_cig_ill.set_yticks([])
+    ax_cig_ill.text(0.175, 1.05, 'Reads Left Breakpoint', transform=ax_cig_ill.transAxes, ha='left',
+                    bbox=dict(boxstyle="round,pad=0.3", edgecolor='black', facecolor='white', linewidth=1.3))
+    ax_cig_ill.text(0.825, 1.05, 'Reads Right Breakpoint', transform=ax_cig_ill.transAxes, ha='right',
+                    bbox=dict(boxstyle="round,pad=0.3", edgecolor='black', facecolor='white', linewidth=1.3))
+    ax_cig_ill.text(0.535, 1.05, 'Read Connections', transform=ax_cig_ill.transAxes, ha='right',
+                    bbox=dict(boxstyle="round,pad=0.3", edgecolor='black', facecolor='white', linewidth=1.3))
     
     
 def plot_breakpoints_ill(samples: dict, rep_df: pd.DataFrame, sv_type: str, chrom: str, start: int, end: int, padding: int=1500, window: int=100, collapse_ins: bool=True, outfile: str=None):
