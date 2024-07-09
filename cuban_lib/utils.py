@@ -31,7 +31,8 @@ def compute_aln_matrix(bam, chrom, start, stop, collapse_ins=True):
                 'name' : [],
                 'discordant_idx_ff': [], 
                 'discordant_idx_rr': [],
-                'discordant_idx_rf': []}
+                'discordant_idx_rf': [],
+                'discordant_idx_tx': []}
 
     for idx, read in enumerate(reads):
         
@@ -48,22 +49,19 @@ def compute_aln_matrix(bam, chrom, start, stop, collapse_ins=True):
                 aux_dict['haplotag_idx'].append(-1)
                 
             if not read.mate_is_unmapped:
-                if read.is_reverse and read.mate_is_reverse:
+                if read.reference_id != read.next_reference_id:
+                    aux_dict['discordant_idx_tx'].append(idx)
+                
+                elif read.is_reverse and read.mate_is_reverse:
                     aux_dict['discordant_idx_rr'].append(idx)
                     
                 elif not read.is_reverse and not read.mate_is_reverse:
                     aux_dict['discordant_idx_ff'].append(idx)
                     
-                elif read.is_read1 and read.is_reverse and not read.mate_is_reverse and read.template_length>0:
+                elif not read.is_reverse and read.mate_is_reverse and read.template_length < 0:
                     aux_dict['discordant_idx_rf'].append(idx)
                             
-                elif read.is_read1 and not read.is_reverse and read.mate_is_reverse and read.template_length<0:
-                    aux_dict['discordant_idx_rf'].append(idx)
-                    
-                elif read.is_read2 and not read.is_reverse and read.mate_is_reverse and read.template_length<0:
-                    aux_dict['discordant_idx_rf'].append(idx)
-                    
-                elif read.is_read2 and read.is_reverse and not read.mate_is_reverse and read.template_length>0:
+                elif read.is_reverse and not read.mate_is_reverse and read.template_length > 0:
                     aux_dict['discordant_idx_rf'].append(idx)
                 
             cigararray = cigartuples_to_array(read.cigartuples)
@@ -269,6 +267,7 @@ def compute_isize_orientation_dict(bam_filename: str, chrom: str, start: int, en
     positions_rr = []
     positions_ff = []
     positions_rf = []
+    positions_tx = []
 
     # Extract positions and insert sizes for the specified region
     for read in bam.fetch(chrom, start, end):
@@ -281,23 +280,23 @@ def compute_isize_orientation_dict(bam_filename: str, chrom: str, start: int, en
             elif abs(read.template_length) < thr_min:
                 positions_exceed_min.append(read.reference_start)
                 
+            # Orientation TX
+            if read.reference_id != read.next_reference_id:
+                positions_tx.append(read.reference_start)
+            
             # Orientation RR
-            if read.is_reverse and read.mate_is_reverse:
+            elif read.is_reverse and read.mate_is_reverse:
                 positions_rr.append(read.reference_start)
-                
+            
+            # Orientation FF
             elif not read.is_reverse and not read.mate_is_reverse:
                 positions_ff.append(read.reference_start)
-                
-            elif read.is_read1 and read.is_reverse and not read.mate_is_reverse and read.template_length>0:
+            
+            # Orientation RF
+            elif not read.is_reverse and read.mate_is_reverse and read.template_length < 0:
                 positions_rf.append(read.reference_start)
                 
-            elif read.is_read1 and not read.is_reverse and read.mate_is_reverse and read.template_length<0:
-                positions_rf.append(read.reference_start)
-                
-            elif read.is_read2 and not read.is_reverse and read.mate_is_reverse and read.template_length<0:
-                positions_rf.append(read.reference_start)
-                
-            elif read.is_read2 and read.is_reverse and not read.mate_is_reverse and read.template_length>0:
+            elif read.is_reverse and not read.mate_is_reverse and read.template_length > 0:
                 positions_rf.append(read.reference_start)
                 
     positions_exceed_min = np.array(positions_exceed_min) - start
@@ -305,5 +304,6 @@ def compute_isize_orientation_dict(bam_filename: str, chrom: str, start: int, en
     positions_rr = np.array(positions_rr) - start
     positions_ff = np.array(positions_ff) - start
     positions_rf = np.array(positions_rf) - start
+    positions_tx = np.array(positions_tx) - start
     
-    return {'exceed_min': positions_exceed_min, 'exceed_max': positions_exceed_max, 'rr': positions_rr, 'ff': positions_ff, 'rf': positions_rf}
+    return {'exceed_min': positions_exceed_min, 'exceed_max': positions_exceed_max, 'rr': positions_rr, 'ff': positions_ff, 'rf': positions_rf, 'tx': positions_tx}

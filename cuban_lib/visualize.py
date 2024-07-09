@@ -73,6 +73,8 @@ def add_disco_overlay(aux_dict: dict, aln_matrix: np.array, ax: plt.axis, orient
                 ax.add_patch(mplpatches.Rectangle((start-0.5 + offset, idx-0.5),end-start+1, 1, hatch='//',fill=False, snap=False, linewidth=0.5, edgecolor='cadetblue', alpha=1))
             elif orient == 'rf':
                 ax.add_patch(mplpatches.Rectangle((start-0.5 + offset, idx-0.5),end-start+1, 1, hatch='\\\\',fill=False, snap=False, linewidth=0.5, edgecolor='midnightblue', alpha=1))
+            elif orient == 'tx':
+                ax.add_patch(mplpatches.Rectangle((start-0.5 + offset, idx-0.5),end-start+1, 1, hatch='//',fill=False, snap=False, linewidth=0.5, edgecolor='#df624c', alpha=1))
         except IndexError:
             pass
 
@@ -224,7 +226,7 @@ def plot_rep(data: dict, ax_cov_ill: plt.Axes, rep_y_pos_map: dict):
     for key in rep_y_pos_map.keys():
         ax_cov_ill.text(10, rep_y_pos_map[key][0]-2, key.replace('_', ' '), fontsize=7, horizontalalignment='left', verticalalignment='center', color='black', weight='bold')
         
-        
+
 def plot_isize(data: dict, ax_isize_ill: plt.Axes, padding: int):
     """ Plots insert size outliers.
 
@@ -239,27 +241,38 @@ def plot_isize(data: dict, ax_isize_ill: plt.Axes, padding: int):
     cov = data['cov']
     x_range = np.linspace(0, cov.iloc[-1, 1], 1000)
     
-    ### Plot
-    if len(isize_orient_dict['exceed_max'] > 1):
-        try:
-            kde_max = gaussian_kde(isize_orient_dict['exceed_max'])
-            kde_max.set_bandwidth(bw_method=kde_max.factor / 10.)
-            kde_values_max = kde_max(x_range)
-            ax_isize_ill.plot(x_range, kde_values_max, color='black')
-        except:
-            pass
-    else:
-        ax_isize_ill.plot(x_range, np.zeros(1000), color='black')
+    ### Helper function for histogram plotting with line plots
+    def plot_hist_line(data_points, color, bins=50):
+        if len(data_points) > 0:
+            hist, bin_edges = np.histogram(data_points, bins=bins, range=(0, cov.iloc[-1, 1]), density=False)
+            bin_centers = 0.5 * (bin_edges[1:] + bin_edges[:-1])
+            ax_isize_ill.plot(bin_centers, hist, color=color)
+        else:
+            ax_isize_ill.plot(x_range, np.zeros(1000), color=color)
         
+        return len(data_points)
+    
+    ### Plot histogram for insert size outliers and get max value
+    num_outliers = plot_hist_line(isize_orient_dict.get('exceed_max', []), color='black')
+        
+    ### Set plot limits and labels
     ax_isize_ill.set_xlim(left=0, right=cov.iloc[-1, 1])
-    ax_isize_ill.set_yticks([])
     ax_isize_ill.set_xticks([])
     ax_isize_ill.axvline(x=padding, color='black', linewidth=1, linestyle='--')
     ax_isize_ill.axvline(x=cov.iloc[-1, 1] - padding, color='black', linewidth=1, linestyle='--')
     ax_isize_ill.text(0, 1.05, 'Insert Size Outliers', transform=ax_isize_ill.transAxes, ha='left',
                       bbox=dict(boxstyle="round,pad=0.3", edgecolor='black', facecolor='white', linewidth=1.3))
-    
-    
+
+    ### Configure right y-axis
+    ax_isize_ill.yaxis.set_label_position("right")
+    ax_isize_ill.yaxis.tick_right()
+    yticks = ax_isize_ill.get_yticks()
+    if len(yticks) > 0:
+        ax_isize_ill.set_yticks([yticks[-1]])
+    if num_outliers == 0:
+        ax_isize_ill.set_yticks([])
+
+
 def plot_orient(data: dict, ax_orient_ill: plt.Axes, padding: int):
     """ Plots discordant orientation.
 
@@ -274,46 +287,38 @@ def plot_orient(data: dict, ax_orient_ill: plt.Axes, padding: int):
     cov = data['cov']
     x_range = np.linspace(0, cov.iloc[-1, 1], 1000)
     
-    ### Plot
-    if len(isize_orient_dict['rr']) > 1:
-        try:
-            kde_rr = gaussian_kde(isize_orient_dict['rr'])
-            kde_rr.set_bandwidth(bw_method=kde_rr.factor / 10.)
-            kde_values_rr = kde_rr(x_range)
-            ax_orient_ill.plot(x_range, kde_values_rr, color='sandybrown')
-        except:
-            pass
-    else:
-        ax_orient_ill.plot(x_range, np.zeros(1000), color='sandybrown')
-        
-    if len(isize_orient_dict['ff']) > 1:
-        try:
-            kde_ff = gaussian_kde(isize_orient_dict['ff'])
-            kde_ff.set_bandwidth(bw_method=kde_ff.factor / 10.)
-            kde_values_ff = kde_ff(x_range)
-            ax_orient_ill.plot(x_range, kde_values_ff, color='cadetblue')
-        except:
-            pass
-    else:
-        ax_orient_ill.plot(x_range, np.zeros(1000), color='cadetblue')
-        
-    if len(isize_orient_dict['rf']) > 1:
-        try:
-            kde_rf = gaussian_kde(isize_orient_dict['rf'])
-            kde_rf.set_bandwidth(bw_method=kde_rf.factor / 10.)
-            kde_values_rf = kde_rf(x_range)
-            ax_orient_ill.plot(x_range, kde_values_rf, color='midnightblue')
-        except:
-            pass
-    else:
-        ax_orient_ill.plot(x_range, np.zeros(1000), color='midnightblue')
-        
+    ### Helper function for histogram plotting
+    def plot_hist(data_points, color, linestyle='-', bins=55):
+        if len(data_points) > 0:
+            hist, bin_edges = np.histogram(data_points, bins=bins, range=(0, cov.iloc[-1, 1]), density=False)
+            bin_centers = 0.5 * (bin_edges[1:] + bin_edges[:-1])
+            ax_orient_ill.plot(bin_centers, hist, color=color, linestyle=linestyle)
+        else:
+            ax_orient_ill.plot(x_range, np.zeros(1000), color=color)
+            
+        return len(data_points)
+    
+    ### Plot each orientation with scaling by number of data points
+    num_rr = plot_hist(isize_orient_dict.get('rr', []), color='sandybrown')
+    num_ff = plot_hist(isize_orient_dict.get('ff', []), color='cadetblue')
+    num_rf = plot_hist(isize_orient_dict.get('rf', []), color='#6ac0b7')
+    num_tx = plot_hist(isize_orient_dict.get('tx', []), color='#df624c')
+    
+    ### Set plot limits and labels
     ax_orient_ill.set_xlim(left=0, right=cov.iloc[-1, 1])
-    ax_orient_ill.set_yticks([])
     ax_orient_ill.axvline(x=padding, color='black', linewidth=1, linestyle='--')
     ax_orient_ill.axvline(x=cov.iloc[-1, 1] - padding, color='black', linewidth=1, linestyle='--')
     ax_orient_ill.text(0, 1.05, 'Discordant Read Pairs', transform=ax_orient_ill.transAxes, ha='left',
                        bbox=dict(boxstyle="round,pad=0.3", edgecolor='black', facecolor='white', linewidth=1.3))
+    
+    ### Configure right y-axis
+    ax_orient_ill.yaxis.set_label_position("right")
+    ax_orient_ill.yaxis.tick_right()
+    yticks = ax_orient_ill.get_yticks()
+    if len(yticks) > 0:
+        ax_orient_ill.set_yticks([yticks[-1]])
+    if max(num_rr, num_ff, num_rf, num_tx) == 0:
+        ax_orient_ill.set_yticks([])
     
     
 def plot_cigar(data: dict, ax_cig_ill: plt.Axes, colors: list, window: int, tech: str):
@@ -343,6 +348,7 @@ def plot_cigar(data: dict, ax_cig_ill: plt.Axes, colors: list, window: int, tech
         add_disco_overlay(aux_dict_left, aln_matrix_left, ax_cig_ill, 'rr')
         add_disco_overlay(aux_dict_left, aln_matrix_left, ax_cig_ill, 'ff')
         add_disco_overlay(aux_dict_left, aln_matrix_left, ax_cig_ill, 'rf')
+        add_disco_overlay(aux_dict_left, aln_matrix_left, ax_cig_ill, 'tx')
     add_splitread_overlay(aux_dict_left, aln_matrix_left, ax_cig_ill)
 
     ### Right Breakpoint
@@ -352,6 +358,7 @@ def plot_cigar(data: dict, ax_cig_ill: plt.Axes, colors: list, window: int, tech
         add_disco_overlay(aux_dict_right, aln_matrix_right, ax_cig_ill, 'rr', offset=2.5*window)
         add_disco_overlay(aux_dict_right, aln_matrix_right, ax_cig_ill, 'ff', offset=2.5*window)
         add_disco_overlay(aux_dict_right, aln_matrix_right, ax_cig_ill, 'rf', offset=2.5*window)
+        add_disco_overlay(aux_dict_right, aln_matrix_right, ax_cig_ill, 'tx', offset=2.5*window)
     add_splitread_overlay(aux_dict_right, aln_matrix_right, ax_cig_ill, offset=2.5*window)
 
     ### Read Connections
