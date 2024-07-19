@@ -301,8 +301,8 @@ def plot_orient(data: dict, ax_orient_ill: plt.Axes, padding: int):
     ### Plot each orientation with scaling by number of data points
     num_rr = plot_hist(isize_orient_dict.get('rr', []), color='sandybrown')
     num_ff = plot_hist(isize_orient_dict.get('ff', []), color='cadetblue')
-    num_rf = plot_hist(isize_orient_dict.get('rf', []), color='#6ac0b7')
-    num_tx = plot_hist(isize_orient_dict.get('tx', []), color='#df624c')
+    num_rf = plot_hist(isize_orient_dict.get('rf', []), color='midnightblue')
+    num_tx = plot_hist(isize_orient_dict.get('tx', []), color='grey', linestyle='--')
     
     ### Set plot limits and labels
     ax_orient_ill.set_xlim(left=0, right=cov.iloc[-1, 1])

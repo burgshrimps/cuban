@@ -304,6 +304,9 @@ def compute_isize_orientation_dict(bam_filename: str, chrom: str, start: int, en
     positions_rr = np.array(positions_rr) - start
     positions_ff = np.array(positions_ff) - start
     positions_rf = np.array(positions_rf) - start
+    print(positions_rr)
+    print(positions_ff)
+    print(positions_rf)
     positions_tx = np.array(positions_tx) - start
     
     return {'exceed_min': positions_exceed_min, 'exceed_max': positions_exceed_max, 'rr': positions_rr, 'ff': positions_ff, 'rf': positions_rf, 'tx': positions_tx}
