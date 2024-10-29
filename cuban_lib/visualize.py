@@ -98,7 +98,7 @@ def add_mapq_overlay(aux_dict: dict, aln_matrix: np.array, ax: plt.axis, offset:
             pass
         
         
-def gather_data_ill(bam_name: str, chrom: str, start: int, end: int, window: int, padding: int, collapse_ins: bool, rep_df: pd.DataFrame) -> dict:
+def gather_data(sv_type: str, bam_name: str, chrom: str, start: int, end: int, window: int, padding: int, collapse_ins: bool, rep_df: pd.DataFrame) -> dict:
     """ Gathers relevant sequencing data for one sample for a given region.
 
     Args:
@@ -122,47 +122,74 @@ def gather_data_ill(bam_name: str, chrom: str, start: int, end: int, window: int
     bam = pysam.AlignmentFile(bam_name, 'rb')
     
     ### Compute alignment matrix
-    aln_matrix_left, aux_dict_left = compute_aln_matrix(bam, chrom, start - window, start + window, collapse_ins=collapse_ins)
-    aln_matrix_right, aux_dict_right = compute_aln_matrix(bam, chrom, end - window, end + window, collapse_ins=collapse_ins)
-    aln_matrix_left, aln_matrix_right = pad_alignment_matrices(aln_matrix_left, aln_matrix_right)
-    result['aln_matrix_left'] = aln_matrix_left
-    result['aux_dict_left'] = aux_dict_left 
-    result['aln_matrix_right'] = aln_matrix_right
-    result['aux_dict_right'] = aux_dict_right 
-    
-    ### Concatenate alignment matrices
-    aln_matrix_middle = np.ones((aln_matrix_left.shape[0], 50)) * -1
-    aln_matrix = np.concatenate((aln_matrix_left, aln_matrix_middle, aln_matrix_right), axis=1)
-    result['aln_matrix'] = aln_matrix
-    
-    ### Do not compute coverage if SV too big
-    if end - start < 5000000:
-        compute_cov = True
-    else:
-        compute_cov = False
-    result['compute_cov'] = compute_cov
+    if sv_type in ['DEL', 'DUP', 'INV']:
         
-    ### Compute coverage
-    if compute_cov:
-        cov_padding = max(padding, int((end - start) * 0.2))
+        aln_matrix_left, aux_dict_left = compute_aln_matrix(bam, chrom, start - window, start + window, collapse_ins=collapse_ins)
+        aln_matrix_right, aux_dict_right = compute_aln_matrix(bam, chrom, end - window, end + window, collapse_ins=collapse_ins)
+        aln_matrix_left, aln_matrix_right = pad_alignment_matrices(aln_matrix_left, aln_matrix_right)
+        result['aln_matrix_left'] = aln_matrix_left
+        result['aux_dict_left'] = aux_dict_left 
+        result['aln_matrix_right'] = aln_matrix_right
+        result['aux_dict_right'] = aux_dict_right 
+    
+        ### Concatenate alignment matrices
+        aln_matrix_middle = np.ones((aln_matrix_left.shape[0], 50)) * -1
+        aln_matrix = np.concatenate((aln_matrix_left, aln_matrix_middle, aln_matrix_right), axis=1)
+        result['aln_matrix'] = aln_matrix
+    
+        ### Do not compute coverage if SV too big
+        if end - start < 200000000:
+            compute_cov = True
+        else:
+            compute_cov = False
+        result['compute_cov'] = compute_cov
+        
+        ### Compute coverage
+        if compute_cov:
+            cov_padding = max(padding, int((end - start) * 0.2))
+            cov, cov_minq = compute_cov_df(bam_name, chrom, max(1, start - cov_padding), end + cov_padding)
+            
+            result['cov_padding'] = cov_padding
+            result['cov'] = cov
+            result['cov_minq'] = cov_minq
+            if end - start > 1000 and end - start < 100000:
+                cov_minq_smoothed = savgol_filter(cov_minq[2], int((end - start) * 0.05), 3)
+                result['cov_minq_smoothed'] = cov_minq_smoothed
+                
+            ### Compute insert size outliers and discordant orientation
+            isize_orient_dict = compute_isize_orientation_dict(bam_name, chrom, max(1, start - cov_padding), end + cov_padding)
+            result['isize_orient_dict'] = isize_orient_dict
+            
+        ### Compute repeat overlap
+        rep_df_sample = compute_rep_df(rep_df, chrom, start, end, padding=padding)
+        result['rep_df'] = rep_df_sample
+        
+    elif sv_type == 'INS':
+        
+        ### Compute alignment matrix
+        aln_matrix, aux_dict = compute_aln_matrix(bam, chrom, start - window, end + window, collapse_ins=collapse_ins)
+        result['aln_matrix'] = aln_matrix
+        result['aux_dict'] = aux_dict
+        
+        ### Compute coverage
+        result['compute_cov'] = True
+        cov_padding = padding
         cov, cov_minq = compute_cov_df(bam_name, chrom, max(1, start - cov_padding), end + cov_padding)
         
         result['cov_padding'] = cov_padding
         result['cov'] = cov
         result['cov_minq'] = cov_minq
-        if end - start > 1000 and end - start < 100000:
-            cov_minq_smoothed = savgol_filter(cov_minq[2], int((end - start) * 0.05), 3)
-            result['cov_minq_smoothed'] = cov_minq_smoothed
-            
+        cov_minq_smoothed = savgol_filter(cov_minq[2], 25, 3)
+        result['cov_minq_smoothed'] = cov_minq_smoothed
+        
         ### Compute insert size outliers and discordant orientation
         isize_orient_dict = compute_isize_orientation_dict(bam_name, chrom, max(1, start - cov_padding), end + cov_padding)
         result['isize_orient_dict'] = isize_orient_dict
         
+        ### Compute repeat overlap
+        rep_df_sample = compute_rep_df(rep_df, chrom, start, end, padding=padding)
+        result['rep_df'] = rep_df_sample
         
-    ### Compute repeat overlap
-    rep_df_sample = compute_rep_df(rep_df, chrom, start, end, padding=padding)
-    result['rep_df'] = rep_df_sample
-    
     return result
 
 
@@ -310,6 +337,8 @@ def plot_orient(data: dict, ax_orient_ill: plt.Axes, padding: int):
     ax_orient_ill.axvline(x=cov.iloc[-1, 1] - padding, color='black', linewidth=1, linestyle='--')
     ax_orient_ill.text(0, 1.05, 'Discordant Read Pairs', transform=ax_orient_ill.transAxes, ha='left',
                        bbox=dict(boxstyle="round,pad=0.3", edgecolor='black', facecolor='white', linewidth=1.3))
+    ax_orient_ill.text(0, -1.5, 'Reads Around Breakpoint', transform=ax_orient_ill.transAxes, ha='left',
+                        bbox=dict(boxstyle="round,pad=0.3", edgecolor='black', facecolor='white', linewidth=1.3))
     
     ### Configure right y-axis
     ax_orient_ill.yaxis.set_label_position("right")
@@ -321,7 +350,7 @@ def plot_orient(data: dict, ax_orient_ill: plt.Axes, padding: int):
         ax_orient_ill.set_yticks([])
     
     
-def plot_cigar(data: dict, ax_cig_ill: plt.Axes, colors: list, window: int, tech: str):
+def plot_cigar(sv_type: str, data: dict, ax_cig_ill: plt.Axes, colors: list, window: int, tech: str):
     """ Plots CIGAR string information around breakpoints.
 
     Args:
@@ -331,66 +360,94 @@ def plot_cigar(data: dict, ax_cig_ill: plt.Axes, colors: list, window: int, tech
         window (int): Window around each breakpoint to collect CIGAR string information for.
     """    
     
-    ### Extract data
-    aln_matrix = data['aln_matrix']
-    aux_dict_left = data['aux_dict_left']
-    aln_matrix_left = data['aln_matrix_left']
-    aux_dict_right = data['aux_dict_right']
-    aln_matrix_right = data['aln_matrix_right']
+    if sv_type in ['DEL', 'DUP', 'INV']:
+        
+        ### Extract data
+        aln_matrix = data['aln_matrix']
+        aux_dict_left = data['aux_dict_left']
+        aln_matrix_left = data['aln_matrix_left']
+        aux_dict_right = data['aux_dict_right']
+        aln_matrix_right = data['aln_matrix_right']
+        
+        ### Plot
+        im = ax_cig_ill.imshow(aln_matrix, cmap=ListedColormap(colors), vmin=-1, vmax=8)
+
+        ### Left Breakpoint 
+        ax_cig_ill.axvline(x=window, color='black', linewidth=1, linestyle='--')
+        add_mapq_overlay(aux_dict_left, aln_matrix_left, ax_cig_ill)
+        if tech == 'ill':
+            add_disco_overlay(aux_dict_left, aln_matrix_left, ax_cig_ill, 'rr')
+            add_disco_overlay(aux_dict_left, aln_matrix_left, ax_cig_ill, 'ff')
+            add_disco_overlay(aux_dict_left, aln_matrix_left, ax_cig_ill, 'rf')
+            add_disco_overlay(aux_dict_left, aln_matrix_left, ax_cig_ill, 'tx')
+        add_splitread_overlay(aux_dict_left, aln_matrix_left, ax_cig_ill)
+
+        ### Right Breakpoint
+        ax_cig_ill.axvline(x=window+2.5*window, color='black', linewidth=1, linestyle='--')
+        add_mapq_overlay(aux_dict_right, aln_matrix_right, ax_cig_ill, offset=2.5*window)
+        if tech == 'ill':
+            add_disco_overlay(aux_dict_right, aln_matrix_right, ax_cig_ill, 'rr', offset=2.5*window)
+            add_disco_overlay(aux_dict_right, aln_matrix_right, ax_cig_ill, 'ff', offset=2.5*window)
+            add_disco_overlay(aux_dict_right, aln_matrix_right, ax_cig_ill, 'rf', offset=2.5*window)
+            add_disco_overlay(aux_dict_right, aln_matrix_right, ax_cig_ill, 'tx', offset=2.5*window)
+        add_splitread_overlay(aux_dict_right, aln_matrix_right, ax_cig_ill, offset=2.5*window)
+
+        ### Read Connections
+        df_aux_left = pd.DataFrame(aux_dict_left['name'], columns=['name']).reset_index()
+        df_aux_right = pd.DataFrame(aux_dict_right['name'], columns=['name']).reset_index()
+        df_aux_merge = df_aux_left.merge(df_aux_right, on='name', how='left', suffixes=('_left', '_right'))
+        df_aux_merge = df_aux_merge[df_aux_merge['index_right'].notna()].reset_index(drop=True)
+        df_aux_merge['index_right'] = df_aux_merge['index_right'].astype(int)
+        df_aux_merge['split_left'] = 0
+        df_aux_merge.loc[df_aux_merge['index_left'].isin(aux_dict_left['split_idx']), 'split_left'] = 1
+        df_aux_merge['split_right'] = 0
+        df_aux_merge.loc[df_aux_merge['index_right'].isin(aux_dict_right['split_idx']), 'split_right'] = 1
+
+        for i in range(len(df_aux_merge)):
+            if df_aux_merge.loc[i, 'split_left'] == 1 and df_aux_merge.loc[i, 'split_right'] == 1:
+                ax_cig_ill.plot([window*2, (window*2)+49.5], [df_aux_merge.loc[i, 'index_left'], df_aux_merge.loc[i, 'index_right']], color='black', linewidth=0.5, linestyle='dotted')
+            else:
+                ax_cig_ill.plot([window*2, (window*2)+49.5], [df_aux_merge.loc[i, 'index_left'], df_aux_merge.loc[i, 'index_right']], color='#df624c', linewidth=0.5, linestyle='dotted')
+
+        ax_cig_ill.axvline(x=(window*2)-0.5, color='lightgrey', linewidth=1, linestyle='--')
+        ax_cig_ill.axvline(x=(window*2)+49.5, color='lightgrey', linewidth=1, linestyle='--')
+        ax_cig_ill.set_xticks([0, window/2, window, window*1.5, 2*window, 2*window+50, 2*window+50+window/2, 2*window+50+window, 2*window+50+window*1.5, 2*window+50+2*window], labels=[str(-int(window)), str(-int(window/2)), '0', str(int(window/2)), str(int(window)), str(-int(window)), str(-int(window/2)), '0', str(int(window/2)), str(int(window))])
+        ax_cig_ill.set_yticks([])
+        ax_cig_ill.text(0.175, 1.05, 'Reads Left Breakpoint', transform=ax_cig_ill.transAxes, ha='left',
+                        bbox=dict(boxstyle="round,pad=0.3", edgecolor='black', facecolor='white', linewidth=1.3))
+        ax_cig_ill.text(0.825, 1.05, 'Reads Right Breakpoint', transform=ax_cig_ill.transAxes, ha='right',
+                        bbox=dict(boxstyle="round,pad=0.3", edgecolor='black', facecolor='white', linewidth=1.3))
+        ax_cig_ill.text(0.535, 1.05, 'Read Connections', transform=ax_cig_ill.transAxes, ha='right',
+                        bbox=dict(boxstyle="round,pad=0.3", edgecolor='black', facecolor='white', linewidth=1.3))
+        
+    if sv_type == 'INS':
+        
+        ### Extract data
+        aln_matrix = data['aln_matrix']
+        aux_dict = data['aux_dict']
+        
+        ### Plot
+        im = ax_cig_ill.imshow(aln_matrix, cmap=ListedColormap(colors), vmin=-1, vmax=8)
+        
+        ### Breakpoint
+        ax_cig_ill.axvline(x=window, color='black', linewidth=1, linestyle='--')
+        add_mapq_overlay(aux_dict, aln_matrix, ax_cig_ill)
+        if tech == 'ill':
+            add_disco_overlay(aux_dict, aln_matrix, ax_cig_ill, 'rr')
+            add_disco_overlay(aux_dict, aln_matrix, ax_cig_ill, 'ff')
+            add_disco_overlay(aux_dict, aln_matrix, ax_cig_ill, 'rf')
+            add_disco_overlay(aux_dict, aln_matrix, ax_cig_ill, 'tx')
+        add_splitread_overlay(aux_dict, aln_matrix, ax_cig_ill)
+        
+        ax_cig_ill.set_xticks([0, window/2, window, window*1.5, 2*window], labels=[str(-int(window)), str(-int(window/2)), '0', str(int(window/2)), str(int(window))])
+        ax_cig_ill.set_yticks([])
+        
+        if tech == 'pb':
+            ax_cig_ill.text(0.0, 1.1, 'Reads Around Breakpoint', transform=ax_cig_ill.transAxes, ha='left',
+                            bbox=dict(boxstyle="round,pad=0.3", edgecolor='black', facecolor='white', linewidth=1.3))
     
-    ### Plot
-    im = ax_cig_ill.imshow(aln_matrix, cmap=ListedColormap(colors), vmin=-1, vmax=8)
-
-    ### Left Breakpoint 
-    ax_cig_ill.axvline(x=window, color='black', linewidth=1, linestyle='--')
-    add_mapq_overlay(aux_dict_left, aln_matrix_left, ax_cig_ill)
-    if tech == 'ill':
-        add_disco_overlay(aux_dict_left, aln_matrix_left, ax_cig_ill, 'rr')
-        add_disco_overlay(aux_dict_left, aln_matrix_left, ax_cig_ill, 'ff')
-        add_disco_overlay(aux_dict_left, aln_matrix_left, ax_cig_ill, 'rf')
-        add_disco_overlay(aux_dict_left, aln_matrix_left, ax_cig_ill, 'tx')
-    add_splitread_overlay(aux_dict_left, aln_matrix_left, ax_cig_ill)
-
-    ### Right Breakpoint
-    ax_cig_ill.axvline(x=window+2.5*window, color='black', linewidth=1, linestyle='--')
-    add_mapq_overlay(aux_dict_right, aln_matrix_right, ax_cig_ill, offset=2.5*window)
-    if tech == 'ill':
-        add_disco_overlay(aux_dict_right, aln_matrix_right, ax_cig_ill, 'rr', offset=2.5*window)
-        add_disco_overlay(aux_dict_right, aln_matrix_right, ax_cig_ill, 'ff', offset=2.5*window)
-        add_disco_overlay(aux_dict_right, aln_matrix_right, ax_cig_ill, 'rf', offset=2.5*window)
-        add_disco_overlay(aux_dict_right, aln_matrix_right, ax_cig_ill, 'tx', offset=2.5*window)
-    add_splitread_overlay(aux_dict_right, aln_matrix_right, ax_cig_ill, offset=2.5*window)
-
-    ### Read Connections
-    df_aux_left = pd.DataFrame(aux_dict_left['name'], columns=['name']).reset_index()
-    df_aux_right = pd.DataFrame(aux_dict_right['name'], columns=['name']).reset_index()
-    df_aux_merge = df_aux_left.merge(df_aux_right, on='name', how='left', suffixes=('_left', '_right'))
-    df_aux_merge = df_aux_merge[df_aux_merge['index_right'].notna()].reset_index(drop=True)
-    df_aux_merge['index_right'] = df_aux_merge['index_right'].astype(int)
-    df_aux_merge['split_left'] = 0
-    df_aux_merge.loc[df_aux_merge['index_left'].isin(aux_dict_left['split_idx']), 'split_left'] = 1
-    df_aux_merge['split_right'] = 0
-    df_aux_merge.loc[df_aux_merge['index_right'].isin(aux_dict_right['split_idx']), 'split_right'] = 1
-
-    for i in range(len(df_aux_merge)):
-        if df_aux_merge.loc[i, 'split_left'] == 1 and df_aux_merge.loc[i, 'split_right'] == 1:
-            ax_cig_ill.plot([window*2, (window*2)+49.5], [df_aux_merge.loc[i, 'index_left'], df_aux_merge.loc[i, 'index_right']], color='black', linewidth=0.5, linestyle='dotted')
-        else:
-            ax_cig_ill.plot([window*2, (window*2)+49.5], [df_aux_merge.loc[i, 'index_left'], df_aux_merge.loc[i, 'index_right']], color='#df624c', linewidth=0.5, linestyle='dotted')
-
-    ax_cig_ill.axvline(x=(window*2)-0.5, color='lightgrey', linewidth=1, linestyle='--')
-    ax_cig_ill.axvline(x=(window*2)+49.5, color='lightgrey', linewidth=1, linestyle='--')
-    ax_cig_ill.set_xticks([0, window/2, window, window*1.5, 2*window, 2*window+50, 2*window+50+window/2, 2*window+50+window, 2*window+50+window*1.5, 2*window+50+2*window], labels=[str(-int(window)), str(-int(window/2)), '0', str(int(window/2)), str(int(window)), str(-int(window)), str(-int(window/2)), '0', str(int(window/2)), str(int(window))])
-    ax_cig_ill.set_yticks([])
-    ax_cig_ill.text(0.175, 1.05, 'Reads Left Breakpoint', transform=ax_cig_ill.transAxes, ha='left',
-                    bbox=dict(boxstyle="round,pad=0.3", edgecolor='black', facecolor='white', linewidth=1.3))
-    ax_cig_ill.text(0.825, 1.05, 'Reads Right Breakpoint', transform=ax_cig_ill.transAxes, ha='right',
-                    bbox=dict(boxstyle="round,pad=0.3", edgecolor='black', facecolor='white', linewidth=1.3))
-    ax_cig_ill.text(0.535, 1.05, 'Read Connections', transform=ax_cig_ill.transAxes, ha='right',
-                    bbox=dict(boxstyle="round,pad=0.3", edgecolor='black', facecolor='white', linewidth=1.3))
     
-    
-def plot_breakpoints_ill(samples: dict, rep_df: pd.DataFrame, sv_type: str, chrom: str, start: int, end: int, padding: int=1500, window: int=100, collapse_ins: bool=True, outfile: str=None):
+def cuban(samples: dict, rep_df: pd.DataFrame, sv_type: str, chrom: str, start: int, end: int, padding: int=1500, window: int=100, collapse_ins: bool=True, outfile: str=None, sv_len: int=None):
     """ Visualizes alignment information around a structural variant for one or multiple samples.
 
     Args:
@@ -440,7 +497,7 @@ def plot_breakpoints_ill(samples: dict, rep_df: pd.DataFrame, sv_type: str, chro
         baseline_cov = samples[sample]['baseline_cov']
         
         ### Extract Sequencing Data
-        data = gather_data_ill(bam_name, chrom, start, end, window, padding, collapse_ins, rep_df)  
+        data = gather_data(sv_type, bam_name, chrom, start, end, window, padding, collapse_ins, rep_df)  
         
         ### Define sample axes
         if technology == 'ill':
@@ -460,7 +517,7 @@ def plot_breakpoints_ill(samples: dict, rep_df: pd.DataFrame, sv_type: str, chro
                 plot_rep(data, ax_cov_ill, rep_y_pos_map)
                 plot_isize(data, ax_isize_ill, padding)
                 plot_orient(data, ax_orient_ill, padding)
-            plot_cigar(data, ax_cig_ill, colors, window, 'ill')
+            plot_cigar(sv_type, data, ax_cig_ill, colors, window, 'ill')
             
             ### Update index
             i += 5
@@ -478,14 +535,15 @@ def plot_breakpoints_ill(samples: dict, rep_df: pd.DataFrame, sv_type: str, chro
             if data['compute_cov']:
                 plot_cov(start, end, data, ax_cov_pb, padding, baseline_cov)
                 plot_rep(data, ax_cov_pb, rep_y_pos_map)
-            plot_cigar(data, ax_cig_pb, colors, window, 'pb_clr')
+            plot_cigar(sv_type, data, ax_cig_pb, colors, window, 'pb')
             
             ### Update index
             i += 3
         
         ### Set title
         if not plotted_main_title:
-            sv_len = end - start
+            if sv_len is None:
+                sv_len = end - start
             ax_title.text(0.5, 0.5, sv_type + ' ' + chrom + ':' + add_comma_to_pos(start) + '-' + add_comma_to_pos(end) + ' (' + add_comma_to_pos(sv_len) + ' bp)', horizontalalignment='center', verticalalignment='center', fontsize=12, weight='bold')
             plotted_main_title = True
         ax_title.text(0.5, 0, name + ' (' + family_status.capitalize() + ', ' + disease_status.capitalize() + ')', horizontalalignment='center', verticalalignment='center', fontsize=12, weight='bold')
@@ -500,240 +558,6 @@ def plot_breakpoints_ill(samples: dict, rep_df: pd.DataFrame, sv_type: str, chro
             plt.clf()
             plt.text(0.5, 0.5, 'Plotting not possible', ha='center', va='center')
             plt.savefig(outfile, dpi=96, bbox_inches='tight')
-    else:
-        plt.show()
-
-    
-def plot_breakpoints_ill_pb(bam_filename_ill, bam_filename_pb, rep_df, chrom, leftbp, rightbp, padding=500, window=50, collapse_ins=True, title=None, outfile=None, df_svs_ill=None, df_svs_pb=None, ill_baseline_cov=None, pb_baseline_cov=None):
-    """ Plots coverage and alignments around breakpoints. """
-    ### Load BAM file
-    bam1 = pysam.AlignmentFile(bam_filename_ill, 'rb')
-    bam2 = pysam.AlignmentFile(bam_filename_pb, 'rb')
-
-    ### Compute alignment matrix
-    aln_matrix_left1, aux_dict_left1 = compute_aln_matrix(bam1, chrom, leftbp - window, leftbp + window, collapse_ins=collapse_ins, size=2*window)
-    aln_matrix_right1, aux_dict_right1 = compute_aln_matrix(bam1, chrom, rightbp - window, rightbp + window, collapse_ins=collapse_ins, size=2*window)
-    aln_matrix_left1, aln_matrix_right1 = pad_alignment_matrices(aln_matrix_left1, aln_matrix_right1)
-
-    aln_matrix_left2, aux_dict_left2 = compute_aln_matrix(bam2, chrom, leftbp - window, leftbp + window, collapse_ins=collapse_ins, size=2*window)
-    aln_matrix_right2, aux_dict_right2 = compute_aln_matrix(bam2, chrom, rightbp - window, rightbp + window, collapse_ins=collapse_ins, size=2*window)
-    aln_matrix_left2, aln_matrix_right2 = pad_alignment_matrices(aln_matrix_left2, aln_matrix_right2)
-
-    ### Concatenate alignment matrices
-    aln_matrix_middle1 = np.ones((aln_matrix_left1.shape[0], 50)) * -1
-    aln_matrix1 = np.concatenate((aln_matrix_left1, aln_matrix_middle1, aln_matrix_right1), axis=1)
-
-    aln_matrix_middle2 = np.ones((aln_matrix_left2.shape[0], 50)) * -1
-    aln_matrix2 = np.concatenate((aln_matrix_left2, aln_matrix_middle2, aln_matrix_right2), axis=1)
-
-    ### Do not compute coverage if SV too big
-    if rightbp - leftbp < 2000000:
-        compute_cov = True
-    else:
-        compute_cov = False
-
-    ### Compute coverage
-    if compute_cov:
-        cov_padding = max(padding, int((rightbp - leftbp) * 0.2))
-        cov1, cov_minq1 = compute_cov_df(bam_filename_ill, chrom, max(1, leftbp - cov_padding), rightbp + cov_padding)
-        cov2, cov_minq2 = compute_cov_df(bam_filename_pb, chrom, max(1, leftbp - cov_padding), rightbp + cov_padding)
-        if rightbp - leftbp > 1000 and rightbp - leftbp < 100000:
-            cov_minq1_smoothed = savgol_filter(cov_minq1[2], int((rightbp - leftbp) * 0.05), 3)
-            cov_minq2_smoothed = savgol_filter(cov_minq2[2], int((rightbp - leftbp) * 0.05), 3)
-
-    ### Compute repeat overlap
-    rep_df = compute_rep_df(rep_df, chrom, leftbp, rightbp)
-
-    ### Plot options
-    plt.rcParams["font.weight"] = "bold"
-    plt.rcParams["axes.labelweight"] = "bold"
-
-    colors = ['white', 'lightgrey', '#b7954b', '#5066a2', '#f0b6a0', '#6ac0b7', '#df624c', 'lightgrey', 'lightgrey']
-    fig = plt.figure(figsize=(25,22))
-    fig.patch.set_facecolor('white')
-    gs = gridspec.GridSpec(6, 4, height_ratios=[3,1,6,3,1,6], hspace=0.2, wspace=0.5)
-    ax_cov_ill = plt.subplot(gs[0, 0:4])
-    ax_svs_ill = plt.subplot(gs[1, 0:4])
-    ax_cig_ill = plt.subplot(gs[2, 0:4])
-    ax_cov_pb = plt.subplot(gs[3, 0:4])
-    ax_svs_pb = plt.subplot(gs[4, 0:4])
-    ax_cig_pb = plt.subplot(gs[5, 0:4])
-    
-    axs = [ax_cov_ill, ax_svs_ill, ax_cig_ill, ax_cov_pb, ax_svs_pb, ax_cig_pb]
-    
-    for ax in axs:
-        ax.grid(False)
-        ax.set_facecolor('white')
-        
-    for ax in [ax_cig_ill, ax_cig_pb]:
-        ax.axes.yaxis.set_visible(False)
-        
-    for ax in [ax_svs_ill, ax_svs_pb]:
-        ax.axes.xaxis.set_visible(False)
-        ax.axes.yaxis.set_visible(False)
-        
-        for spine in ax.spines.values():
-            spine.set_visible(False)
-        
-    plt.rcParams["font.weight"] = "bold"
-    plt.rcParams["axes.labelweight"] = "bold"
-    
-    if compute_cov:
-        ### Coverage 1
-        ax_cov_ill.plot(cov_minq1[1], cov_minq1[2], color='#df624c', fillstyle='bottom')
-        ax_cov_ill.plot(cov1[1], cov1[2], color='grey', fillstyle='bottom')
-        if rightbp - leftbp > 1000 and rightbp - leftbp < 100000:
-            ax_cov_ill.plot(cov_minq1[1], cov_minq1_smoothed, color='black')
-        if ill_baseline_cov is not None:
-            ax_cov_ill.axhline(y=ill_baseline_cov, color='#df624c', linewidth=1, linestyle='--')
-        ax_cov_ill.fill_between(cov1[1], cov1[2], color="grey", alpha=0.2)
-        ax_cov_ill.axvline(x=cov_padding, color='black', linewidth=1, linestyle='--')
-        ax_cov_ill.axvline(x=cov1.iloc[-1, 1] - cov_padding, color='black', linewidth=1, linestyle='--')
-        cov1_median = cov1[2].median()
-        cov1_mad = (cov1[2] - cov1_median).abs().median()
-        ax_cov_ill.set_ylim(bottom=-70)
-        ax_cov_ill.set_xlim(left=0, right=cov1.iloc[-1, 1])
-        
-        ### Repeat track 1
-        for i in range(len(rep_df)):
-            try:
-                ax_cov_ill.hlines(y=rep_y_pos_map[rep_df.loc[i, 'repClass']][0], xmin=rep_df.loc[i, 'genoStart'], xmax=rep_df.loc[i, 'genoEnd'], linewidth=4, color=rep_y_pos_map[rep_df.loc[i, 'repClass']][1])
-            except KeyError: # repeat type not in rep_y_pos_map
-                continue
-        
-        # Add repeat labels
-        for key in rep_y_pos_map.keys():
-            ax_cov_ill.text(10, rep_y_pos_map[key][0]-2, key.replace('_', ' '), fontsize=7, horizontalalignment='left', verticalalignment='center', color='black', weight='bold')
-        
-        ### Coverage 2
-        ax_cov_pb.plot(cov_minq2[1], cov_minq2[2], color='#df624c', fillstyle='bottom')
-        ax_cov_pb.plot(cov2[1], cov2[2], color='grey', fillstyle='bottom')
-        if rightbp - leftbp > 1000 and rightbp - leftbp < 100000:
-            ax_cov_pb.plot(cov_minq2[1], cov_minq2_smoothed, color='black')
-        if pb_baseline_cov is not None:
-            ax_cov_pb.axhline(y=pb_baseline_cov, color='#df624c', linewidth=1, linestyle='--')
-        ax_cov_pb.fill_between(cov2[1], cov2[2], color="grey", alpha=0.2)
-        ax_cov_pb.axvline(x=cov_padding, color='black', linewidth=1, linestyle='--')
-        ax_cov_pb.axvline(x=cov2.iloc[-1, 1] - cov_padding, color='black', linewidth=1, linestyle='--')
-        cov2_median = cov2[2].median()
-        cov2_mad = (cov2[2] - cov2_median).abs().median()
-        ax_cov_pb.set_ylim(bottom=-70)
-        ax_cov_pb.set_xlim(left=0, right=cov2.iloc[-1, 1])
-        #ax_cov_pb.set_yticks([0, 20, 40, 60, 80], labels=['0', '20', '40', '60', ''])
-        
-        ### Repeat track 2
-        for i in range(len(rep_df)):
-            try:
-                ax_cov_pb.hlines(y=rep_y_pos_map[rep_df.loc[i, 'repClass']][0], xmin=rep_df.loc[i, 'genoStart'], xmax=rep_df.loc[i, 'genoEnd'], linewidth=4, color=rep_y_pos_map[rep_df.loc[i, 'repClass']][1])
-            except KeyError: # repeat type not in rep_y_pos_map
-                continue
-        
-        # Add repeat labels
-        for key in rep_y_pos_map.keys():
-            ax_cov_pb.text(10, rep_y_pos_map[key][0]-2, key.replace('_', ' '), fontsize=7, horizontalalignment='left', verticalalignment='center', color='black', weight='bold')
-    
-    plt.rcParams['hatch.linewidth'] = 0.5
-    cmap = cm.inferno.reversed()
-    
-    ### SV Neighbourhood ILL
-    if compute_cov:
-        ax_svs_ill.set_xlim(left=0, right=rightbp - leftbp + 2 * cov_padding)
-    else:
-        ax_svs_ill.set_xlim(left=0, right=rightbp - leftbp + 2 * padding)
-    if df_svs_ill is not None:
-        if compute_cov:
-            sv_neighbourhood_ill_df = get_variant_neighbourhood(df_svs_ill, chrom, leftbp, rightbp, padding=cov_padding)
-        else:
-            sv_neighbourhood_ill_df = get_variant_neighbourhood(df_svs_ill, chrom, leftbp, rightbp, padding=padding)
-        for i in range(len(sv_neighbourhood_ill_df)):
-            y_pos = i * -8
-            sv_qual = sv_neighbourhood_ill_df.loc[i, 'dicast_qual']
-            if not np.isnan(sv_qual):
-                color = cmap(sv_qual)
-            else:
-                color = 'lightgrey'
-            ax_svs_ill.hlines(y=y_pos, xmin=sv_neighbourhood_ill_df.loc[i, 'start'], xmax=sv_neighbourhood_ill_df.loc[i, 'end'], linewidth=4, color=color)
-            ax_svs_ill.text(10, y_pos, sv_neighbourhood_ill_df.loc[i, 'caller'], fontsize=7, horizontalalignment='left', verticalalignment='center', color='black', weight='bold')
-    
-
-    ### Breakpoints ILL
-    im = ax_cig_ill.imshow(aln_matrix1, cmap=ListedColormap(colors), vmin=-1, vmax=8)
-
-    ### Left Breakpoint 1
-    ax_cig_ill.axvline(x=window, color='black', linewidth=1, linestyle='--')
-    add_mapq_overlay(aux_dict_left1, aln_matrix_left1, ax_cig_ill)
-    add_disco_overlay(aux_dict_left1, aln_matrix_left1, ax_cig_ill, 'rr')
-    add_disco_overlay(aux_dict_left1, aln_matrix_left1, ax_cig_ill, 'ff')
-    add_disco_overlay(aux_dict_left1, aln_matrix_left1, ax_cig_ill, 'rf')
-    add_splitread_overlay(aux_dict_left1, aln_matrix_left1, ax_cig_ill)
-
-    ### Right Breakpoint 1
-    ax_cig_ill.axvline(x=window+2.5*window, color='black', linewidth=1, linestyle='--')
-    add_mapq_overlay(aux_dict_right1, aln_matrix_right1, ax_cig_ill, offset=2.5*window)
-    add_disco_overlay(aux_dict_right1, aln_matrix_right1, ax_cig_ill, 'rr', offset=2.5*window)
-    add_disco_overlay(aux_dict_right1, aln_matrix_right1, ax_cig_ill, 'ff', offset=2.5*window)
-    add_disco_overlay(aux_dict_right1, aln_matrix_right1, ax_cig_ill, 'rf', offset=2.5*window)
-    add_splitread_overlay(aux_dict_right1, aln_matrix_right1, ax_cig_ill, offset=2.5*window)
-
-    ### Read Connections 1
-    df_aux_left1 = pd.DataFrame(aux_dict_left1['name'], columns=['name']).reset_index()
-    df_aux_right1 = pd.DataFrame(aux_dict_right1['name'], columns=['name']).reset_index()
-    df_aux_merge1 = df_aux_left1.merge(df_aux_right1, on='name', how='left', suffixes=('_left', '_right'))
-    df_aux_merge1 = df_aux_merge1[df_aux_merge1['index_right'].notna()].reset_index(drop=True)
-    df_aux_merge1['index_right'] = df_aux_merge1['index_right'].astype(int)
-    df_aux_merge1['split_left'] = 0
-    df_aux_merge1.loc[df_aux_merge1['index_left'].isin(aux_dict_left1['split_idx']), 'split_left'] = 1
-    df_aux_merge1['split_right'] = 0
-    df_aux_merge1.loc[df_aux_merge1['index_right'].isin(aux_dict_right1['split_idx']), 'split_right'] = 1
-
-    for i in range(len(df_aux_merge1)):
-        if df_aux_merge1.loc[i, 'split_left'] == 1 and df_aux_merge1.loc[i, 'split_right'] == 1:
-            ax_cig_ill.plot([window*2, (window*2)+49.5], [df_aux_merge1.loc[i, 'index_left'], df_aux_merge1.loc[i, 'index_right']], color='black', linewidth=0.5, linestyle='dotted')
-        else:
-            ax_cig_ill.plot([window*2, (window*2)+49.5], [df_aux_merge1.loc[i, 'index_left'], df_aux_merge1.loc[i, 'index_right']], color='#df624c', linewidth=0.5, linestyle='dotted')
-
-    ax_cig_ill.axvline(x=(window*2)-0.5, color='lightgrey', linewidth=1, linestyle='--')
-    ax_cig_ill.axvline(x=(window*2)+49.5, color='lightgrey', linewidth=1, linestyle='--')
-    ax_cig_ill.set_xticks([0, window/2, window, window*1.5, 2*window, 2*window+50, 2*window+50+window/2, 2*window+50+window, 2*window+50+window*1.5, 2*window+50+2*window], labels=[str(-int(window)), str(-int(window/2)), '0', str(int(window/2)), str(int(window)), str(-int(window)), str(-int(window/2)), '0', str(int(window/2)), str(int(window))])
-
-    ### Breakpoints PB
-    im = ax_cig_pb.imshow(aln_matrix2, cmap=ListedColormap(colors), vmin=-1, vmax=8)
-
-    ### Left Breakpoint 2
-    ax_cig_pb.axvline(x=window, color='black', linewidth=1, linestyle='--')
-    add_mapq_overlay(aux_dict_left2, aln_matrix_left2, ax_cig_pb)
-    add_splitread_overlay(aux_dict_left2, aln_matrix_left2, ax_cig_pb)
-
-    ### Right Breakpoint 2
-    ax_cig_pb.axvline(x=window+2.5*window, color='black', linewidth=1, linestyle='--')
-    add_mapq_overlay(aux_dict_right2, aln_matrix_right2, ax_cig_pb, offset=2.5*window)
-    add_splitread_overlay(aux_dict_right2, aln_matrix_right2, ax_cig_pb, offset=2.5*window)
-
-    ### Read Connections 2
-    df_aux_left2 = pd.DataFrame(aux_dict_left2['name'], columns=['name']).reset_index()
-    df_aux_right2 = pd.DataFrame(aux_dict_right2['name'], columns=['name']).reset_index()
-    df_aux_merge2 = df_aux_left2.merge(df_aux_right2, on='name', how='left', suffixes=('_left', '_right'))
-    df_aux_merge2 = df_aux_merge2[df_aux_merge2['index_right'].notna()].reset_index(drop=True)
-    df_aux_merge2['index_right'] = df_aux_merge2['index_right'].astype(int)
-
-    for i in range(len(df_aux_merge2)):
-        ax_cig_pb.plot([window*2, (window*2)+49.5], [df_aux_merge2.loc[i, 'index_left'], df_aux_merge2.loc[i, 'index_right']], color='black', linewidth=0.5, linestyle='dotted')
-
-    ax_cig_pb.axvline(x=(window*2)-0.5, color='lightgrey', linewidth=1, linestyle='--')
-    ax_cig_pb.axvline(x=(window*2)+49.5, color='lightgrey', linewidth=1, linestyle='--')
-    ax_cig_pb.set_xticks([0, window/2, window, window*1.5, 2*window, 2*window+50, 2*window+50+window/2, 2*window+50+window, 2*window+50+window*1.5, 2*window+50+2*window], labels=[str(-int(window)), str(-int(window/2)), '0', str(int(window/2)), str(int(window)), str(-int(window)), str(-int(window/2)), '0', str(int(window/2)), str(int(window))])
-
-    ### Output
-    if title != None:
-        ax_cov_ill.set_title(title)
-    if outfile != None:
-        try:
-            plt.savefig(outfile, dpi=300, bbox_inches='tight')
-            plt.close()
-        except OverflowError:
-            plt.clf()
-            plt.text(0.5, 0.5, 'Plotting not possible', ha='center', va='center')
-            plt.savefig(outfile, dpi=300, bbox_inches='tight')
     else:
         plt.show()
 
