@@ -191,7 +191,9 @@ def get_read_by_name(bam, chrom, start, stop, read_name):
 
 def add_comma_to_pos(pos):
     """ Adds comma to position. """
-    pos = str(pos)
+    pos = str(int(pos))
+    if len(pos) < 4:
+        return pos
     newstr = ''
     for i in range(len(pos)):
         newstr = pos[::-1][i] + newstr

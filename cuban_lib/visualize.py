@@ -164,7 +164,7 @@ def gather_data(sv_type: str, bam_name: str, chrom: str, start: int, end: int, w
         rep_df_sample = compute_rep_df(rep_df, chrom, start, end, padding=padding)
         result['rep_df'] = rep_df_sample
         
-    elif sv_type == 'INS':
+    elif sv_type in ['INS', 'BND']:
         
         ### Compute alignment matrix
         aln_matrix, aux_dict = compute_aln_matrix(bam, chrom, start - window, end + window, collapse_ins=collapse_ins)
@@ -193,7 +193,7 @@ def gather_data(sv_type: str, bam_name: str, chrom: str, start: int, end: int, w
     return result
 
 
-def plot_cov(start: int, end: int, data: dict, ax_cov_ill: plt.Axes, padding: int, baseline_cov: float=None):
+def plot_cov(start: int, end: int, data: dict, ax_cov_ill: plt.Axes, padding: int, baseline_cov: float=None, plot_label: bool=True):
     """ Plots coverage for a given region.
 
     Args:
@@ -226,8 +226,9 @@ def plot_cov(start: int, end: int, data: dict, ax_cov_ill: plt.Axes, padding: in
     yticks_filtered = yticks[yticks >= 0]
     ax_cov_ill.set_yticks(yticks_filtered)
     ax_cov_ill.set_ylim(bottom=-70, top=min(yticks[-1], 4 * baseline_cov))
-    ax_cov_ill.text(0, 1.05, 'Coverage', transform=ax_cov_ill.transAxes, ha='left',
-                    bbox=dict(boxstyle="round,pad=0.3", edgecolor='black', facecolor='white', linewidth=1.3))
+    if plot_label:
+        ax_cov_ill.text(0, 1.1, 'Coverage', transform=ax_cov_ill.transAxes, ha='left',
+                        bbox=dict(boxstyle="round,pad=0.3", edgecolor='black', facecolor='white', linewidth=1.3))
     
     
 def plot_rep(data: dict, ax_cov_ill: plt.Axes, rep_y_pos_map: dict):
@@ -254,7 +255,7 @@ def plot_rep(data: dict, ax_cov_ill: plt.Axes, rep_y_pos_map: dict):
         ax_cov_ill.text(10, rep_y_pos_map[key][0]-2, key.replace('_', ' '), fontsize=7, horizontalalignment='left', verticalalignment='center', color='black', weight='bold')
         
 
-def plot_isize(data: dict, ax_isize_ill: plt.Axes, padding: int):
+def plot_isize(data: dict, ax_isize_ill: plt.Axes, padding: int, plot_label: bool=True):
     """ Plots insert size outliers.
 
     Args:
@@ -287,8 +288,10 @@ def plot_isize(data: dict, ax_isize_ill: plt.Axes, padding: int):
     ax_isize_ill.set_xticks([])
     ax_isize_ill.axvline(x=padding, color='black', linewidth=1, linestyle='--')
     ax_isize_ill.axvline(x=cov.iloc[-1, 1] - padding, color='black', linewidth=1, linestyle='--')
-    ax_isize_ill.text(0, 1.05, 'Insert Size Outliers', transform=ax_isize_ill.transAxes, ha='left',
-                      bbox=dict(boxstyle="round,pad=0.3", edgecolor='black', facecolor='white', linewidth=1.3))
+    
+    if plot_label:
+        ax_isize_ill.text(0, 1.05, 'Insert Size Outliers', transform=ax_isize_ill.transAxes, ha='left',
+                        bbox=dict(boxstyle="round,pad=0.3", edgecolor='black', facecolor='white', linewidth=1.3))
 
     ### Configure right y-axis
     ax_isize_ill.yaxis.set_label_position("right")
@@ -300,7 +303,7 @@ def plot_isize(data: dict, ax_isize_ill: plt.Axes, padding: int):
         ax_isize_ill.set_yticks([])
 
 
-def plot_orient(data: dict, ax_orient_ill: plt.Axes, padding: int):
+def plot_orient(data: dict, ax_orient_ill: plt.Axes, padding: int, plot_label: bool=True):
     """ Plots discordant orientation.
 
     Args:
@@ -329,15 +332,15 @@ def plot_orient(data: dict, ax_orient_ill: plt.Axes, padding: int):
     num_rr = plot_hist(isize_orient_dict.get('rr', []), color='sandybrown')
     num_ff = plot_hist(isize_orient_dict.get('ff', []), color='cadetblue')
     num_rf = plot_hist(isize_orient_dict.get('rf', []), color='midnightblue')
-    num_tx = plot_hist(isize_orient_dict.get('tx', []), color='grey', linestyle='--')
+    num_tx = plot_hist(isize_orient_dict.get('tx', []), color='#df624c', linestyle='--')
     
     ### Set plot limits and labels
     ax_orient_ill.set_xlim(left=0, right=cov.iloc[-1, 1])
     ax_orient_ill.axvline(x=padding, color='black', linewidth=1, linestyle='--')
     ax_orient_ill.axvline(x=cov.iloc[-1, 1] - padding, color='black', linewidth=1, linestyle='--')
-    ax_orient_ill.text(0, 1.05, 'Discordant Read Pairs', transform=ax_orient_ill.transAxes, ha='left',
-                       bbox=dict(boxstyle="round,pad=0.3", edgecolor='black', facecolor='white', linewidth=1.3))
-    ax_orient_ill.text(0, -1.5, 'Reads Around Breakpoint', transform=ax_orient_ill.transAxes, ha='left',
+    
+    if plot_label:
+        ax_orient_ill.text(0, 1.05, 'Discordant Read Pairs', transform=ax_orient_ill.transAxes, ha='left',
                         bbox=dict(boxstyle="round,pad=0.3", edgecolor='black', facecolor='white', linewidth=1.3))
     
     ### Configure right y-axis
@@ -350,7 +353,7 @@ def plot_orient(data: dict, ax_orient_ill: plt.Axes, padding: int):
         ax_orient_ill.set_yticks([])
     
     
-def plot_cigar(sv_type: str, data: dict, ax_cig_ill: plt.Axes, colors: list, window: int, tech: str):
+def plot_cigar(sv_type: str, data: dict, ax_cig_ill: plt.Axes, colors: list, window: int, tech: str, dataB: dict=None):
     """ Plots CIGAR string information around breakpoints.
 
     Args:
@@ -360,14 +363,24 @@ def plot_cigar(sv_type: str, data: dict, ax_cig_ill: plt.Axes, colors: list, win
         window (int): Window around each breakpoint to collect CIGAR string information for.
     """    
     
-    if sv_type in ['DEL', 'DUP', 'INV']:
+    if sv_type in ['DEL', 'DUP', 'INV', 'BND']:
         
         ### Extract data
-        aln_matrix = data['aln_matrix']
-        aux_dict_left = data['aux_dict_left']
-        aln_matrix_left = data['aln_matrix_left']
-        aux_dict_right = data['aux_dict_right']
-        aln_matrix_right = data['aln_matrix_right']
+        if sv_type != 'BND':
+            aln_matrix = data['aln_matrix']
+            aux_dict_left = data['aux_dict_left']
+            aln_matrix_left = data['aln_matrix_left']
+            aux_dict_right = data['aux_dict_right']
+            aln_matrix_right = data['aln_matrix_right']
+        
+        else:
+            aux_dict_left = data['aux_dict']
+            aln_matrix_left = data['aln_matrix']
+            aux_dict_right = dataB['aux_dict']
+            aln_matrix_right = dataB['aln_matrix']
+            aln_matrix_left, aln_matrix_right = pad_alignment_matrices(aln_matrix_left, aln_matrix_right)
+            aln_matrix_middle = np.ones((aln_matrix_left.shape[0], 50)) * -1
+            aln_matrix = np.concatenate((aln_matrix_left, aln_matrix_middle, aln_matrix_right), axis=1)
         
         ### Plot
         im = ax_cig_ill.imshow(aln_matrix, cmap=ListedColormap(colors), vmin=-1, vmax=8)
@@ -383,14 +396,14 @@ def plot_cigar(sv_type: str, data: dict, ax_cig_ill: plt.Axes, colors: list, win
         add_splitread_overlay(aux_dict_left, aln_matrix_left, ax_cig_ill)
 
         ### Right Breakpoint
-        ax_cig_ill.axvline(x=window+2.5*window, color='black', linewidth=1, linestyle='--')
-        add_mapq_overlay(aux_dict_right, aln_matrix_right, ax_cig_ill, offset=2.5*window)
+        ax_cig_ill.axvline(x=(window+50)+2*window, color='black', linewidth=1, linestyle='--')
+        add_mapq_overlay(aux_dict_right, aln_matrix_right, ax_cig_ill, offset=2*window+50)
         if tech == 'ill':
-            add_disco_overlay(aux_dict_right, aln_matrix_right, ax_cig_ill, 'rr', offset=2.5*window)
-            add_disco_overlay(aux_dict_right, aln_matrix_right, ax_cig_ill, 'ff', offset=2.5*window)
-            add_disco_overlay(aux_dict_right, aln_matrix_right, ax_cig_ill, 'rf', offset=2.5*window)
-            add_disco_overlay(aux_dict_right, aln_matrix_right, ax_cig_ill, 'tx', offset=2.5*window)
-        add_splitread_overlay(aux_dict_right, aln_matrix_right, ax_cig_ill, offset=2.5*window)
+            add_disco_overlay(aux_dict_right, aln_matrix_right, ax_cig_ill, 'rr', offset=2*window+50)
+            add_disco_overlay(aux_dict_right, aln_matrix_right, ax_cig_ill, 'ff', offset=2*window+50)
+            add_disco_overlay(aux_dict_right, aln_matrix_right, ax_cig_ill, 'rf', offset=2*window+50)
+            add_disco_overlay(aux_dict_right, aln_matrix_right, ax_cig_ill, 'tx', offset=2*window+50)
+        add_splitread_overlay(aux_dict_right, aln_matrix_right, ax_cig_ill, offset=2*window+50)
 
         ### Read Connections
         df_aux_left = pd.DataFrame(aux_dict_left['name'], columns=['name']).reset_index()
@@ -413,14 +426,23 @@ def plot_cigar(sv_type: str, data: dict, ax_cig_ill: plt.Axes, colors: list, win
         ax_cig_ill.axvline(x=(window*2)+49.5, color='lightgrey', linewidth=1, linestyle='--')
         ax_cig_ill.set_xticks([0, window/2, window, window*1.5, 2*window, 2*window+50, 2*window+50+window/2, 2*window+50+window, 2*window+50+window*1.5, 2*window+50+2*window], labels=[str(-int(window)), str(-int(window/2)), '0', str(int(window/2)), str(int(window)), str(-int(window)), str(-int(window/2)), '0', str(int(window/2)), str(int(window))])
         ax_cig_ill.set_yticks([])
-        ax_cig_ill.text(0.175, 1.05, 'Reads Left Breakpoint', transform=ax_cig_ill.transAxes, ha='left',
-                        bbox=dict(boxstyle="round,pad=0.3", edgecolor='black', facecolor='white', linewidth=1.3))
-        ax_cig_ill.text(0.825, 1.05, 'Reads Right Breakpoint', transform=ax_cig_ill.transAxes, ha='right',
-                        bbox=dict(boxstyle="round,pad=0.3", edgecolor='black', facecolor='white', linewidth=1.3))
-        ax_cig_ill.text(0.535, 1.05, 'Read Connections', transform=ax_cig_ill.transAxes, ha='right',
-                        bbox=dict(boxstyle="round,pad=0.3", edgecolor='black', facecolor='white', linewidth=1.3))
         
-    if sv_type == 'INS':
+        if tech == 'ill':
+            ax_cig_ill.text(0.185, 1.05, 'Reads Left Breakpoint', transform=ax_cig_ill.transAxes, ha='left',
+                            bbox=dict(boxstyle="round,pad=0.3", edgecolor='black', facecolor='white', linewidth=1.3))
+            ax_cig_ill.text(0.815, 1.05, 'Reads Right Breakpoint', transform=ax_cig_ill.transAxes, ha='right',
+                            bbox=dict(boxstyle="round,pad=0.3", edgecolor='black', facecolor='white', linewidth=1.3))
+            ax_cig_ill.text(0.535, 1.05, 'Read Connections', transform=ax_cig_ill.transAxes, ha='right',
+                            bbox=dict(boxstyle="round,pad=0.3", edgecolor='black', facecolor='white', linewidth=1.3))
+        elif tech == 'pb':
+            ax_cig_ill.text(0.185, 1.2, 'Reads Left Breakpoint', transform=ax_cig_ill.transAxes, ha='left',
+                            bbox=dict(boxstyle="round,pad=0.3", edgecolor='black', facecolor='white', linewidth=1.3))
+            ax_cig_ill.text(0.815, 1.2, 'Reads Right Breakpoint', transform=ax_cig_ill.transAxes, ha='right',
+                            bbox=dict(boxstyle="round,pad=0.3", edgecolor='black', facecolor='white', linewidth=1.3))
+            ax_cig_ill.text(0.535, 1.2, 'Read Connections', transform=ax_cig_ill.transAxes, ha='right',
+                            bbox=dict(boxstyle="round,pad=0.3", edgecolor='black', facecolor='white', linewidth=1.3))
+        
+    elif sv_type == 'INS':
         
         ### Extract data
         aln_matrix = data['aln_matrix']
@@ -443,10 +465,10 @@ def plot_cigar(sv_type: str, data: dict, ax_cig_ill: plt.Axes, colors: list, win
         ax_cig_ill.set_yticks([])
         
         if tech == 'pb':
-            ax_cig_ill.text(0.0, 1.1, 'Reads Around Breakpoint', transform=ax_cig_ill.transAxes, ha='left',
-                            bbox=dict(boxstyle="round,pad=0.3", edgecolor='black', facecolor='white', linewidth=1.3))
-    
-    
+            ax_cig_ill.text(0.0, 1.2, 'Reads Around Breakpoint', transform=ax_cig_ill.transAxes, ha='left',
+                                bbox=dict(boxstyle="round,pad=0.3", edgecolor='black', facecolor='white', linewidth=1.3))
+        
+        
 def cuban(samples: dict, rep_df: pd.DataFrame, sv_type: str, chrom: str, start: int, end: int, padding: int=1500, window: int=100, collapse_ins: bool=True, outfile: str=None, sv_len: int=None):
     """ Visualizes alignment information around a structural variant for one or multiple samples.
 
@@ -478,7 +500,7 @@ def cuban(samples: dict, rep_df: pd.DataFrame, sv_type: str, chrom: str, start: 
             height_ratios.extend([1,3,7])
         
     fig = plt.figure(figsize=(25, 11 * num_samples))
-    gs = gridspec.GridSpec(num_rows, 4, height_ratios=height_ratios, hspace=0.2, wspace=0.5)
+    gs = gridspec.GridSpec(num_rows, 4, height_ratios=height_ratios, hspace=0.2, wspace=0.5, figure=fig)
     plt.rcParams['hatch.linewidth'] = 0.5
     plt.rcParams["font.weight"] = "bold"
     plt.rcParams["axes.labelweight"] = "bold"
@@ -544,7 +566,10 @@ def cuban(samples: dict, rep_df: pd.DataFrame, sv_type: str, chrom: str, start: 
         if not plotted_main_title:
             if sv_len is None:
                 sv_len = end - start
-            ax_title.text(0.5, 0.5, sv_type + ' ' + chrom + ':' + add_comma_to_pos(start) + '-' + add_comma_to_pos(end) + ' (' + add_comma_to_pos(sv_len) + ' bp)', horizontalalignment='center', verticalalignment='center', fontsize=12, weight='bold')
+            try:
+                ax_title.text(0.5, 0.5, sv_type + ' ' + chrom + ':' + add_comma_to_pos(start) + '-' + add_comma_to_pos(end) + ' (' + add_comma_to_pos(sv_len) + ' bp)', horizontalalignment='center', verticalalignment='center', fontsize=12, weight='bold')
+            except ValueError:
+                ax_title.text(0.5, 0.5, sv_type + ' ' + chrom + ':' + add_comma_to_pos(start) + '-' + add_comma_to_pos(end) + ' (Unknown Length)', horizontalalignment='center', verticalalignment='center', fontsize=12, weight='bold')
             plotted_main_title = True
         ax_title.text(0.5, 0, name + ' (' + family_status.capitalize() + ', ' + disease_status.capitalize() + ')', horizontalalignment='center', verticalalignment='center', fontsize=12, weight='bold')
         ax_title.axis('off')
@@ -558,6 +583,152 @@ def cuban(samples: dict, rep_df: pd.DataFrame, sv_type: str, chrom: str, start: 
             plt.clf()
             plt.text(0.5, 0.5, 'Plotting not possible', ha='center', va='center')
             plt.savefig(outfile, dpi=96, bbox_inches='tight')
+            plt.close()
+    else:
+        plt.show()
+        
+        
+def cuban_bnd(samples: dict, rep_df: pd.DataFrame, chromA: str, startA: int, endA: int, chromB: str, startB: int, endB: int, padding: int=1500, window: int=100, collapse_ins: bool=True, outfile: str=None):
+    """ Visualizes alignment information around an SV for one or multiple samples for two loci independently.
+
+    Args:
+        samples (dict): Dictionary containing sample information. Keys are sample names and values are dictionaries containing family status, disease status, BAM filename and baseline coverage.
+        rep_df (pd.DataFrame): Repeat dataframe
+        chromA (str): Chromosome of first locus
+        startA (int): Start position of first locus
+        endA (int): End position of first locus
+        chromB (str): Chromosome of second locus
+        startB (int): Start position of second locus
+        endB (int): End position of second locus
+        padding (int, optional): Padding around the SV to compute coverage.. Defaults to 1500.
+        window (int, optional): Window around each breakpoint to collect CIGAR string information for.. Defaults to 100.
+        collapse_ins (bool, optional): Collapse insertions into one base.. Defaults to True.
+        outfile (str, optional): Output filename. Defaults to None.
+    """   
+    # Set SV type
+    sv_type = 'BND' 
+    
+    ### Set up figure
+    colors = ['white', 'lightgrey', '#b7954b', '#5066a2', '#f0b6a0', '#6ac0b7', '#df624c', 'lightgrey', 'lightgrey']
+    num_samples = len(samples)
+    num_rows = 0
+    height_ratios = []
+    for sample in samples:
+        technology = samples[sample]['technology']
+        if technology == 'ill':
+            num_rows += 5
+            height_ratios.extend([1,3,0.5,0.5,7])
+        elif technology == 'pb':
+            num_rows += 3
+            height_ratios.extend([1,3,7])
+        
+    fig = plt.figure(figsize=(25, 11 * num_samples))
+    gs = gridspec.GridSpec(num_rows, 4, height_ratios=height_ratios, hspace=0.5, wspace=0.35, figure=fig)
+    plt.rcParams['hatch.linewidth'] = 0.5
+    plt.rcParams["font.weight"] = "bold"
+    plt.rcParams["axes.labelweight"] = "bold"
+    
+    ### Set up parameters
+    i = 0
+    plotted_main_title = False
+    for sample in samples:
+        
+        ### Get sample info
+        name = sample
+        family_status = samples[sample]['family_status']
+        disease_status = samples[sample]['disease_status']
+        technology = samples[sample]['technology']
+        bam_name = samples[sample]['bam_name']
+        baseline_cov = samples[sample]['baseline_cov']
+        
+        ### Extract Sequencing Data
+        dataA = gather_data(sv_type, bam_name, chromA, startA, endA, window, padding, collapse_ins, rep_df)  
+        dataB = gather_data(sv_type, bam_name, chromB, startB, endB, window, padding, collapse_ins, rep_df)
+        
+        ### Define sample axes
+        if technology == 'ill':
+            axes_title = plt.subplot(gs[i, 0:4])
+            axes_cov_ill = [plt.subplot(gs[i + 1, 0:2]), plt.subplot(gs[i + 1, 2:4])]
+            axes_isize_ill = [plt.subplot(gs[i + 2, 0:2]), plt.subplot(gs[i + 2, 2:4])]
+            axes_orient_ill = [plt.subplot(gs[i + 3, 0:2]), plt.subplot(gs[i + 3, 2:4])]
+            axes_cig_ill = plt.subplot(gs[i + 4, 0:4])
+            axes_split = [axes_cov_ill, axes_isize_ill, axes_orient_ill]
+            axes = [axes_title, axes_cig_ill]
+            for ax in axes_split:
+                for subax in ax:
+                    subax.grid(False)
+                    subax.set_facecolor('white')
+            for ax in axes:
+                ax.grid(False)
+                ax.set_facecolor('white')
+            
+            ### Create plots for current sample, first locus
+            if dataA['compute_cov']:
+                plot_cov(startA, endA, dataA, axes_cov_ill[0], padding, baseline_cov)
+                plot_rep(dataA, axes_cov_ill[0], rep_y_pos_map)
+                plot_isize(dataA, axes_isize_ill[0], padding)
+                plot_orient(dataA, axes_orient_ill[0], padding)
+            
+            ### Create plots for current sample, second locus
+            if dataB['compute_cov']:
+                plot_cov(startB, endB, dataB, axes_cov_ill[1], padding, baseline_cov, plot_label=False)
+                plot_rep(dataB, axes_cov_ill[1], rep_y_pos_map)
+                plot_isize(dataB, axes_isize_ill[1], padding, plot_label=False)
+                plot_orient(dataB, axes_orient_ill[1], padding, plot_label=False)
+                
+            ### Plot joint alignment matrix
+            plot_cigar(sv_type, dataA, axes_cig_ill, colors, window, 'ill', dataB)
+            
+            ### Update index
+            i += 5
+            
+        elif technology == 'pb':
+            axes_title = plt.subplot(gs[i, 0:4])
+            axes_cov_pb = [plt.subplot(gs[i + 1, 0:2]), plt.subplot(gs[i + 1, 2:4])]
+            axes_cig_pb = plt.subplot(gs[i + 2, 0:4])
+            axes_split = [axes_cov_pb]
+            axes = [axes_title, axes_cig_pb]
+            for ax in axes_split:
+                for subax in ax:
+                    subax.grid(False)
+                    subax.set_facecolor('white')
+            for ax in axes:
+                ax.grid(False)
+                ax.set_facecolor('white')
+            
+            ### Create plots for current sample, first locus
+            if dataA['compute_cov']:
+                plot_cov(startA, endA, dataA, axes_cov_pb[0], padding, baseline_cov)
+                plot_rep(dataA, axes_cov_pb[0], rep_y_pos_map)
+            
+            ### Create plots for current sample, second locus
+            if dataB['compute_cov']:
+                plot_cov(startB, endB, dataB, axes_cov_pb[1], padding, baseline_cov, plot_label=False)
+                plot_rep(dataB, axes_cov_pb[1], rep_y_pos_map)
+                
+            ### Plot joint alignment matrix
+            plot_cigar(sv_type, dataA, axes_cig_pb, colors, window, 'pb', dataB)
+            
+            ### Update index
+            i += 3
+        
+        ### Set title
+        if not plotted_main_title:
+            axes_title.text(0.5, 0.5, sv_type + ' ' + chromA + ':' + add_comma_to_pos(startA) + ' <> ' + chromB + ':' + add_comma_to_pos(startB), horizontalalignment='center', verticalalignment='center', fontsize=12, weight='bold')
+            plotted_main_title = True
+        axes_title.text(0.5, 0, name + ' (' + family_status.capitalize() + ', ' + disease_status.capitalize() + ')', horizontalalignment='center', verticalalignment='center', fontsize=12, weight='bold')
+        axes_title.axis('off')
+    
+    ### Save figure
+    if outfile != None:
+        try:
+            plt.savefig(outfile, dpi=96, bbox_inches='tight')
+            plt.close()
+        except OverflowError:
+            plt.clf()
+            plt.text(0.5, 0.5, 'Plotting not possible', ha='center', va='center')
+            plt.savefig(outfile, dpi=96, bbox_inches='tight')
+            plt.close()
     else:
         plt.show()
 
