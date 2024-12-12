@@ -1,4 +1,5 @@
 visualizations
 cuban_lib/__pycache__
 *.png
-inv_bench_viz.ipynb
+inv_viz.ipynb
+bnd_viz.ipynb

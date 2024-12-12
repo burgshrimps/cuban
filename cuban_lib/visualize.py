@@ -45,9 +45,20 @@ def add_splitread_overlay(aux_dict: dict, aln_matrix: np.array, ax: plt.axis, of
 
     for idx in aux_dict['split_idx']:
         try:
-            start = np.where(aln_matrix[idx] >= 4)[0][0]
-            end = np.where(aln_matrix[idx] >= 4)[0][-1]
-            ax.add_patch(mplpatches.Rectangle((start-0.5 + offset, idx - 0.5),end-start+1, 0.9, hatch='||', fill=False, snap=False, linewidth=0.5, edgecolor='black'))
+            indices = np.where((aln_matrix[idx] == 4) | (aln_matrix[idx] == 5))[0]
+            intervals = []
+            if len(indices) > 0:
+                start = indices[0]
+                for i in range(1, len(indices)):
+                    if indices[i] != indices[i-1] + 1:
+                        intervals.append((start, indices[i-1]))
+                        start = indices[i]
+                intervals.append((start, indices[-1]))
+                
+                for interval in intervals:
+                    start = interval[0]
+                    end = interval[1]
+                    ax.add_patch(mplpatches.Rectangle((start-0.5 + offset, idx - 0.5),end-start+1, 0.9, hatch='||', fill=False, snap=False, linewidth=0.5, edgecolor='black'))
         except IndexError:
             pass
 
