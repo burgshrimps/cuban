@@ -126,8 +126,8 @@ def compute_aln_matrix(bam, chrom, start, stop, collapse_ins=True):
                 else:
                     end_idx_read = start_idx_read + size - (read_start - start) 
                     end_idx_aln = size
-                if start_idx_aln < 0:
-                    print(start_idx_aln)
+                # if start_idx_aln < 0:
+                #     print(start_idx_aln)
                 
             if end_idx_aln > 0 and end_idx_read > 0:
                 try:
@@ -205,7 +205,7 @@ def add_comma_to_pos(pos):
     return newstr
 
 
-def compute_baseline_cov(bam_filename: str, chrom: str, n: int=1000, s: int=1000) -> float:
+def compute_baseline_cov(bam_filename: str, chrom: str, n: int=1000, s: int=1000, target_regions: pd.DataFrame=None) -> float:
     """ Computes baseline coverage for a given chromosome.
 
     Args:
@@ -230,12 +230,30 @@ def compute_baseline_cov(bam_filename: str, chrom: str, n: int=1000, s: int=1000
         chrom_idx = 24
     else:
         chrom_idx = int(chrom[3:]) - 1
-        
+
+    # for targeted sequence randomly select at most 100 regions from the current chromosome
+    exome=False
+    if target_regions is not None:
+        target_regions_chrom = target_regions.loc[target_regions['chr'] == chrom]
+        # default to standard coverage computation if there are no target regions in the current chromosome
+        if not target_regions_chrom.empty:
+            exome=True
+            regions_df = target_regions_chrom.sample(min(n,target_regions_chrom.shape[0]), replace=False, axis=0, random_state=1)
+            regions = regions_df.apply(lambda x: [x['chr'],x['start'],min(x['end'],x['start']+s)],axis=1)
+
+    if not exome:
+        regions = []
+        for i in range(n):
+            if len(bam.lengths)>1:
+                start = np.random.randint(0, bam.lengths[chrom_idx])
+            else:
+                start = np.random.randint(0, bam.lengths[0])
+            stop = start + s
+            regions.append([chrom, start, stop])
+
     baseline_coverage_mean = []
-    for i in range(n):
-        start = np.random.randint(0, bam.lengths[chrom_idx])
-        stop = start + s
-        
+    for region in regions:
+        chrom, start, stop = region
         coverage = [0] * (stop - start + 1)
         for pileupcolumn in bam.pileup(chrom, start, stop, min_mapping_quality=20, flag_filter=1540, stepper='samtools', ignore_orphans=False, ignore_overlaps=False):
             if start <= pileupcolumn.pos <= stop:
