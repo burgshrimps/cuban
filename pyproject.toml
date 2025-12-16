@@ -22,4 +22,4 @@ build-backend = "hatchling.build"
 packages = ["cuban_lib"]
 
 [tool.hatch.build.targets.wheel.force-include]
-"resources" = "cuban_lib/resources"
+"resources" = "resources"

@@ -3,3 +3,4 @@ cuban_lib/__pycache__
 *.png
 inv_viz.ipynb
 bnd_viz.ipynb
+.venv/
