@@ -77,20 +77,20 @@ def compute_aln_matrix(bam, chrom, start, stop, collapse_ins=True):
 
             # Identify INS in CIGARARRAY and remove them for alignment visualisation
             if collapse_ins:
-                ins_idx = np.argwhere(cigararray == 1).flatten() # Find positions of INS (1) in CIGARARRAY
-                diff = np.diff(ins_idx) # Compute difference between consecutive INS positions
-                idx_runs = np.argwhere(diff == 1).flatten() # Find positions of consecutive INS positions
+                ins_idx = np.argwhere(cigararray == 1).flatten()  # Find positions of INS (1) in CIGARARRAY
+                diff = np.diff(ins_idx)  # Compute difference between consecutive INS positions
+                idx_runs = np.argwhere(diff == 1).flatten()  # Find positions of consecutive INS positions
                 mask = np.ones(len(cigararray), bool)
-                mask[ins_idx[idx_runs]] = 0 # Deselect consecutive INS positions exept the first one
-                mask[ins_idx - 1] = 0 # Deselect the position before the first INS position to avoid shifting of cigararray
-                cigararray = cigararray[mask] # Remove consecutive INS positions from CIGARARRAY
+                mask[ins_idx[idx_runs]] = 0  # Deselect consecutive INS positions exept the first one
+                mask[ins_idx - 1] = 0  # Deselect the position before the first INS position to avoid shifting of cigararray
+                cigararray = cigararray[mask]  # Remove consecutive INS positions from CIGARARRAY
             
             if read_start < start and read_end > stop:
                 # Read completely covers region
                 if collapse_ins:
                     start_idx_read = start - read_start
                 else:
-                    start_idx_read = np.argwhere(cigararray != 1).flatten()[start - read_start] # shift start by number of INS
+                    start_idx_read = np.argwhere(cigararray != 1).flatten()[start - read_start]  # shift start by number of INS
                 start_idx_aln = 0
                 end_idx_read = start_idx_read + size
                 end_idx_aln = size
