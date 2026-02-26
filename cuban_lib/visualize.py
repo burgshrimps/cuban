@@ -11,9 +11,15 @@ import numpy as np
 import pysam
 import random 
 from scipy.signal import savgol_filter
-from scipy.stats import gaussian_kde
+from cuban_lib.utils import (
+    compute_aln_matrix,
+    pad_alignment_matrices,
+    compute_cov_df,
+    compute_rep_df,
+    compute_isize_orientation_dict,
+    add_comma_to_pos,
+)
 
-from cuban_lib.utils import compute_aln_matrix, pad_alignment_matrices, compute_cov_df, compute_rep_df, get_variant_neighbourhood, compute_isize_orientation_dict, add_comma_to_pos
 
 mpl.rcParams['agg.path.chunksize'] = 1000000
 pd.set_option('display.max_columns', None)
@@ -109,7 +115,7 @@ def add_mapq_overlay(aux_dict: dict, aln_matrix: np.array, ax: plt.axis, offset:
             pass
         
         
-def gather_data(sv_type: str, bam_name: str, chrom: str, start: int, end: int, window: int, padding: int, collapse_ins: bool, rep_df: pd.DataFrame) -> dict:
+def gather_data(sv_type: str, bam_name: str, chrom: str, start: int, end: int, window: int, padding: int, collapse_ins: bool, rep_df: pd.DataFrame, bin_size: int = 1) -> dict:
     """ Gathers relevant sequencing data for one sample for a given region.
 
     Args:
@@ -158,18 +164,27 @@ def gather_data(sv_type: str, bam_name: str, chrom: str, start: int, end: int, w
         ### Compute coverage
         if compute_cov:
             cov_padding = max(padding, int((end - start) * 0.2))
-            cov, cov_minq = compute_cov_df(bam_name, chrom, max(1, start - cov_padding), end + cov_padding)
+            cov, cov_minq = compute_cov_df(bam_name, chrom, max(1, start - cov_padding), end + cov_padding, bin_size=bin_size)
             
             result['cov_padding'] = cov_padding
             result['cov'] = cov
             result['cov_minq'] = cov_minq
-            if end - start > 1000 and end - start < 100000:
-                cov_minq_smoothed = savgol_filter(cov_minq[2], int((end - start) * 0.05), 3)
-                result['cov_minq_smoothed'] = cov_minq_smoothed
+            should_smooth = (bin_size > 1) or (1000 < end - start < 100000)
+            if should_smooth and len(cov_minq) > 5:
+                raw_w = max(5, int(len(cov_minq) * 0.05))
+                w = raw_w if raw_w % 2 == 1 else raw_w + 1
+                w = min(w, len(cov_minq) - 1)
+                if w % 2 == 0:
+                    w -= 1
+                w = max(w, 3)
+                if len(cov_minq) > w:
+                    result['cov_minq_smoothed'] = savgol_filter(cov_minq[2], w, 3)
                 
             ### Compute insert size outliers and discordant orientation
-            isize_orient_dict = compute_isize_orientation_dict(bam_name, chrom, max(1, start - cov_padding), end + cov_padding)
-            result['isize_orient_dict'] = isize_orient_dict
+            if bin_size <= 1:
+                isize_orient_dict = compute_isize_orientation_dict(bam_name, chrom, max(1, start - cov_padding), end + cov_padding)
+                result['isize_orient_dict'] = isize_orient_dict
+
             
         ### Compute repeat overlap
         rep_df_sample = compute_rep_df(rep_df, chrom, start, end, padding=padding)
@@ -185,13 +200,19 @@ def gather_data(sv_type: str, bam_name: str, chrom: str, start: int, end: int, w
         ### Compute coverage
         result['compute_cov'] = True
         cov_padding = padding
-        cov, cov_minq = compute_cov_df(bam_name, chrom, max(1, start - cov_padding), end + cov_padding)
+        cov, cov_minq = compute_cov_df(bam_name, chrom, max(1, start - cov_padding), end + cov_padding, bin_size=bin_size)
         
         result['cov_padding'] = cov_padding
         result['cov'] = cov
         result['cov_minq'] = cov_minq
-        cov_minq_smoothed = savgol_filter(cov_minq[2], 25, 3)
-        result['cov_minq_smoothed'] = cov_minq_smoothed
+        raw_w = max(5, int(len(cov_minq) * 0.05))
+        w = raw_w if raw_w % 2 == 1 else raw_w + 1
+        w = min(w, len(cov_minq) - 1)
+        if w % 2 == 0:
+            w -= 1
+        w = max(w, 3)
+        if len(cov_minq) > w:
+            result['cov_minq_smoothed'] = savgol_filter(cov_minq[2], w, 3)
         
         ### Compute insert size outliers and discordant orientation
         isize_orient_dict = compute_isize_orientation_dict(bam_name, chrom, max(1, start - cov_padding), end + cov_padding)
@@ -223,7 +244,7 @@ def plot_cov(start: int, end: int, data: dict, ax_cov_ill: plt.Axes, padding: in
     ### Plot 
     ax_cov_ill.plot(cov_minq[1], cov_minq[2], color='#df624c', fillstyle='bottom')
     ax_cov_ill.plot(cov[1], cov[2], color='grey', fillstyle='bottom')
-    if end - start > 1000 and end - start < 100000:
+    if 'cov_minq_smoothed' in data:
         cov_minq_smoothed = data['cov_minq_smoothed']
         ax_cov_ill.plot(cov_minq[1], cov_minq_smoothed, color='black')
     if baseline_cov is not None:
@@ -480,7 +501,7 @@ def plot_cigar(sv_type: str, data: dict, ax_cig_ill: plt.Axes, colors: list, win
                                 bbox=dict(boxstyle="round,pad=0.3", edgecolor='black', facecolor='white', linewidth=1.3))
         
         
-def cuban(samples: dict, rep_df: pd.DataFrame, sv_type: str, chrom: str, start: int, end: int, padding: int=1500, window: int=100, collapse_ins: bool=True, outfile: str=None, sv_len: int=None):
+def cuban(samples: dict, rep_df: pd.DataFrame, sv_type: str, chrom: str, start: int, end: int, padding: int=1500, window: int=100, collapse_ins: bool=True, outfile: str=None, sv_len: int=None, bin_size: int=1):
     """ Visualizes alignment information around a structural variant for one or multiple samples.
 
     Args:
@@ -530,7 +551,7 @@ def cuban(samples: dict, rep_df: pd.DataFrame, sv_type: str, chrom: str, start: 
         baseline_cov = samples[sample]['baseline_cov']
         
         ### Extract Sequencing Data
-        data = gather_data(sv_type, bam_name, chrom, start, end, window, padding, collapse_ins, rep_df)  
+        data = gather_data(sv_type, bam_name, chrom, start, end, window, padding, collapse_ins, rep_df, bin_size=bin_size)  
         
         ### Define sample axes
         if technology == 'ill':
@@ -548,8 +569,19 @@ def cuban(samples: dict, rep_df: pd.DataFrame, sv_type: str, chrom: str, start: 
             if data['compute_cov']:
                 plot_cov(start, end, data, ax_cov_ill, padding, baseline_cov)
                 plot_rep(data, ax_cov_ill, rep_y_pos_map)
-                plot_isize(data, ax_isize_ill, padding)
-                plot_orient(data, ax_orient_ill, padding)
+                if 'isize_orient_dict' in data:
+                    plot_isize(data, ax_isize_ill, padding)
+                    plot_orient(data, ax_orient_ill, padding)
+            else:
+                # Large SV: isize/orient skipped (uninformative at this scale)
+                    ax_isize_ill.text(0.5, 0.5, 'Skipped (large SV)',
+                                      transform=ax_isize_ill.transAxes,
+                                      ha='center', va='center',
+                                      fontsize=8, color='grey', style='italic')
+                    ax_isize_ill.set_xticks([])
+                    ax_isize_ill.set_yticks([])
+                    ax_orient_ill.axis('off')
+            
             plot_cigar(sv_type, data, ax_cig_ill, colors, window, 'ill')
             
             ### Update index

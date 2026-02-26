@@ -14,6 +14,7 @@ import matplotlib.pyplot as plt
 import os
 import json
 
+
 plt.style.use('ggplot')
 
 def argparser():
@@ -37,10 +38,32 @@ def argparser():
     args = parser.parse_args()
     return args
 
+
+def get_bin_size(sv_size: int, target_points: int = 2000) -> int:
+    """Computes the coverage bin size based on SV size.
+
+    Returns max(1, sv_size // target_points) so that the binned coverage
+    DataFrame contains approximately target_points data points regardless
+    of SV size.
+
+    Examples:
+        sv_size=100_000  -> bin_size=1    (no binning)
+        sv_size=2_000_000 -> bin_size=1000
+        sv_size=10_000_000 -> bin_size=5000
+
+    Args:
+        sv_size (int): Size of the structural variant in bases.
+        target_points (int): Desired number of output coverage points.
+
+    Returns:
+        int: Bin size (>= 1).
+    """
+    return max(1, sv_size // target_points)
+
+
 def plot_variant_loci_cuban(variant, samples, output_dir, rep_df, cov_dict):
-    '''
-    Generates a Cuban Figure for the variant loci.
-    '''
+    """ Generates a Cuban Figure for the variant loci. """
+    
     if not os.path.exists(output_dir / f'{variant["ID"]}.png'):
         logzero.logger.info(
             f'Saving Cuban Snapshot for {variant["ID"]}...')
@@ -48,15 +71,17 @@ def plot_variant_loci_cuban(variant, samples, output_dir, rep_df, cov_dict):
         # Add coverage for the current chromosome
         for sample in samples:
             samples[sample]['baseline_cov'] = cov_dict[sample][variant['CHR']]
-        # dont plot if the variants is larger than 2mb
-        if variant['SIZE'] > 2000000:
-            logzero.logger.info(f'Skipping {variant["ID"]} because it is larger than 2mb')
-        else:
-            visualize.cuban(samples, rep_df, variant['TYPE'],variant["CHR"], variant["START"], variant["END"],  padding=max(1500,round(int(variant['SIZE'])/10)), collapse_ins=False, window=100, sv_len=variant['SIZE'], outfile=output_dir / f'{variant["ID"]}.png')
+        
+        bin_size = get_bin_size(variant['SIZE'])
+        if bin_size > 1:
+            logzero.logger.info(f'Using bin_size={bin_size} for {variant["ID"]} (SIZE={variant["SIZE"]})')
+        visualize.cuban(samples, rep_df, variant['TYPE'], variant["CHR"], variant["START"], variant["END"],
+                        padding=max(1500, round(int(variant['SIZE']) / 10)), collapse_ins=False, window=100,
+                        sv_len=variant['SIZE'], bin_size=bin_size, outfile=output_dir / f'{variant["ID"]}.png')
 
 
 def add_family_member_to_cuban_dict(row, index_sample, illumina_bam, lrs_bam, coverage_dict, family_ped_df, target_regions, cuban_sample_dict, chromosomes) -> dict:
-    '''Adds sample information to the cuban dictionary based on available techs'''
+    """ Adds sample information to the cuban dictionary based on available techs """
     family_member = row['Name']
     if family_member!=index_sample:
         # check if illumina bam files for the family are available
@@ -83,10 +108,11 @@ def add_family_member_to_cuban_dict(row, index_sample, illumina_bam, lrs_bam, co
             else:
                 family_status = 'NA'
             coverage_dict[f'{family_member} - LRS'] = {chrom:utils.compute_baseline_cov(lrs_bam.replace(index_sample, family_member), chrom, n=50, target_regions=target_regions) for chrom in chromosomes}
-            cuban_sample_dict[f'{family_member} - LRS'] = {'family_status':family_status, 'disease_status':row['Disease Status'], 'technology':'ill','bam_name':f'{lrs_bam.replace(index_sample, family_member)}'}
+            cuban_sample_dict[f'{family_member} - LRS'] = {'family_status':family_status, 'disease_status':row['Disease Status'], 'technology':'pb','bam_name':f'{lrs_bam.replace(index_sample, family_member)}'}
         else:
             logzero.logger.info(f'No LRS BAM file available for {family_member}')
     return cuban_sample_dict
+
 
 def main():
     # read cli
@@ -164,7 +190,7 @@ def main():
                             'bam_name' : lrs_bam},
                             }         
            
-        for index, row in family_df.iterrows():
+        for _, row in family_df.iterrows():
             cuban_sample_dict = add_family_member_to_cuban_dict(row, args.sample, args.illumina_path, args.lrs_path, coverage_dict, sample_ped_df, target_regions, cuban_sample_dict, chromosomes)
 
         # Load baseline coverage for control samples

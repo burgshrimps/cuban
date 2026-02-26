@@ -1,3 +1,4 @@
+import io
 import numpy as np
 import pandas as pd
 import pysam
@@ -148,19 +149,104 @@ def pad_alignment_matrices(aln_matrix_left, aln_matrix_right):
     return aln_matrix_left, aln_matrix_right
 
 
-def compute_cov_df(bam_filename, chrom, start, stop, minq=30):
-    """ Computes coverage for given region. Coverage is computed twice. Once for all reads and once for reads with
-    mapping quality >= minq. """
-    cov = pd.DataFrame([x.split('\t') for x in pysam.depth(bam_filename, '-r', chrom + ':' + str(start) + '-' + str(stop), '-a').split('\n')[:-1]])
-    cov_minq = pd.DataFrame([x.split('\t') for x in pysam.depth(bam_filename, '-r', chrom + ':' + str(start) + '-' + str(stop), '-a', '-Q', str(minq)).split('\n')[:-1]])
-    cov[1] = cov[1].astype(int)
-    cov[2] = cov[2].astype(int)
-    cov[1] = cov[1] - cov.loc[0, 1]
-    cov_minq[1] = cov_minq[1].astype(int)
-    cov_minq[2] = cov_minq[2].astype(int)
-    cov_minq[1] = cov_minq[1] - cov_minq.loc[0, 1]
+def _compute_cov_df_binned_fast(bam_filename: str, chrom: str, start: int, stop: int,
+                                 minq: int, bin_size: int):
+    """Single-pass coverage computation for large SVs via bam.fetch().
 
+    Replaces two pysam.depth() subprocess calls (each generating ~56 MB of pipe output
+    for a 2.8 Mb region) with one native BAM scan that simultaneously computes both
+    all-reads and high-MAPQ coverage. Per-base depth is approximated by accumulating
+    each read's reference-span overlap into bins — accurate to within CIGAR-level
+    deletion noise, negligible at bin_size >= 100 bp resolution.
+
+    Returns:
+        (cov, cov_minq): DataFrames with columns [0=chrom, 1=relative_pos, 2=mean_depth]
+                         — same schema as compute_cov_df().
+    """
+    region_len = stop - start
+    n_bins = max(1, (region_len + bin_size - 1) // bin_size)
+    cov_sum  = np.zeros(n_bins, dtype=np.int64)
+    covq_sum = np.zeros(n_bins, dtype=np.int64)
+
+    with pysam.AlignmentFile(bam_filename, 'rb') as bam:
+        for read in bam.fetch(chrom, start, stop):
+            if (read.is_unmapped or read.is_secondary
+                    or read.is_supplementary or read.is_duplicate
+                    or read.reference_end is None):
+                continue
+            # Relative coordinates, clipped to window
+            rstart = max(read.reference_start, start) - start
+            rend   = min(read.reference_end,   stop)  - start
+            if rstart >= rend:
+                continue
+
+            high_q  = read.mapping_quality >= minq
+            b_first = rstart // bin_size
+            b_last  = min((rend - 1) // bin_size, n_bins - 1)
+
+            for b in range(b_first, b_last + 1):
+                bpos_s  = b * bin_size
+                bpos_e  = min(bpos_s + bin_size, region_len)
+                overlap = min(rend, bpos_e) - max(rstart, bpos_s)
+                if overlap > 0:
+                    cov_sum[b] += overlap
+                    if high_q:
+                        covq_sum[b] += overlap
+
+    positions = np.arange(n_bins, dtype=np.int64) * bin_size
+    cov_mean  = np.round(cov_sum  / bin_size).astype(np.int32)
+    covq_mean = np.round(covq_sum / bin_size).astype(np.int32)
+
+    cov      = pd.DataFrame({0: chrom, 1: positions, 2: cov_mean})
+    cov_minq = pd.DataFrame({0: chrom, 1: positions, 2: covq_mean})
     return cov, cov_minq
+
+
+def compute_cov_df(bam_filename, chrom, start, stop, minq=30, bin_size=1):
+    """ Computes coverage for given region. Coverage is computed twice. Once for all reads and once for reads with
+    mapping quality >= minq. If bin_size > 1, coverage is binned into fixed-width windows before returning. """
+    
+    if bin_size > 1:
+        return _compute_cov_df_binned_fast(bam_filename, chrom, start, stop, minq, bin_size)
+
+    # Small SV path: samtools depth subprocess (per-base, accurate)
+    region = f'{chrom}:{start}-{stop}'
+    cov_str      = pysam.depth(bam_filename, '-r', region, '-a')
+    cov_minq_str = pysam.depth(bam_filename, '-r', region, '-a', '-Q', str(minq))
+
+    cov      = pd.read_csv(io.StringIO(cov_str),      sep='\t', header=None, names=[0, 1, 2],
+                           dtype={1: int, 2: int})
+    cov_minq = pd.read_csv(io.StringIO(cov_minq_str), sep='\t', header=None, names=[0, 1, 2],
+                           dtype={1: int, 2: int})
+
+    cov[1]      = cov[1]      - cov.loc[0, 1]
+    cov_minq[1] = cov_minq[1] - cov_minq.loc[0, 1]
+    return cov, cov_minq
+
+
+def bin_coverage(df: pd.DataFrame, bin_size: int) -> pd.DataFrame:
+    """Bins a per-base coverage DataFrame into fixed-width windows.
+
+    Groups rows by (position // bin_size) * bin_size, computes mean
+    coverage per bin (rounded to int), and returns a DataFrame with the
+    same three-column schema: col 0 = chrom, col 1 = bin start position,
+    col 2 = mean coverage depth.
+
+    Args:
+        df (pd.DataFrame): Per-base coverage DataFrame as returned by
+            compute_cov_df (columns 0, 1, 2).
+        bin_size (int): Width of each bin in bases. A value of 1 returns
+            df unchanged (no-op).
+
+    Returns:
+        pd.DataFrame: Binned coverage DataFrame, same column structure.
+    """
+    if bin_size <= 1:
+        return df
+    bin_col = (df[1] // bin_size) * bin_size
+    binned = df.groupby(bin_col, sort=True).agg({0: 'first', 2: 'mean'}).reset_index()
+    binned[2] = binned[2].round().astype(int)
+    return binned[[0, 1, 2]].reset_index(drop=True)
 
 
 def compute_rep_df(rep_df, chrom, start, stop, padding=500):
