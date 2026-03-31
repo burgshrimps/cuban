@@ -33,6 +33,7 @@ def argparser():
     parser.add_argument('-t', '--threads', required=True, help='Number of threads.')
     parser.add_argument('-e', '--exome_regions', required=False, help='BED file with regions targeted for sequencing.', default=None)
     parser.add_argument('-o', '--output_dir', help='Output directory for Cuban Figures.')
+    parser.add_argument('-fa', '--family_alignment_files', required=False, nargs='+', default=[], help='List of family alignment files.')
     parser.add_argument('-v', '--verbose', action='store_true', help='Logging level.')
     args = parser.parse_args()
     return args
@@ -46,21 +47,32 @@ def plot_variant_loci_cuban(variant, samples, output_dir, rep_df, cov_dict):
             f'Saving Cuban Snapshot for {variant["ID"]}...')
         
         # Add coverage for the current chromosome
+        coverage_background = True
         for sample in samples:
+            if not variant['CHR'] in cov_dict[sample]:
+                coverage_background = False
+                break
             samples[sample]['baseline_cov'] = cov_dict[sample][variant['CHR']]
-        # dont plot if the variants is larger than 2mb
-        if variant['SIZE'] > 2000000:
-            logzero.logger.info(f'Skipping {variant["ID"]} because it is larger than 2mb')
-        else:
-            visualize.cuban(samples, rep_df, variant['TYPE'],variant["CHR"], variant["START"], variant["END"],  padding=max(1500,round(int(variant['SIZE'])/10)), collapse_ins=False, window=100, sv_len=variant['SIZE'], outfile=output_dir / f'{variant["ID"]}.png')
+        
+        # we can only generate cuban plots if the coverage background is available for all samples including the control sample
+        if coverage_background:
+            # dont plot if the variants is larger than 2mb
+            if variant['TYPE'] == 'BND':
+                # extract the second chromosome and end from the position
+                second_chrom, second_pos = variant['ID'].split(".")[-2:]
+                visualize.cuban_bnd(samples, rep_df, variant["CHR"], variant["START"], variant["START"], f'chr{second_chrom}', int(second_pos), int(second_pos), padding=max(1500,round(int(variant['SIZE'])/10)), collapse_ins=False, window=100, outfile=output_dir / f'{variant["ID"]}.png')
+            elif variant['SIZE'] > 2000000:
+                logzero.logger.info(f'Skipping {variant["ID"]} because it is larger than 2mb')
+            else:
+                visualize.cuban(samples, rep_df, variant['TYPE'],variant["CHR"], variant["START"], variant["END"],  padding=max(1500,round(int(variant['SIZE'])/10)), collapse_ins=False, window=100, sv_len=variant['SIZE'], outfile=output_dir / f'{variant["ID"]}.png')
 
 
-def add_family_member_to_cuban_dict(row, index_sample, illumina_bam, lrs_bam, coverage_dict, family_ped_df, target_regions, cuban_sample_dict, chromosomes) -> dict:
+def add_family_member_to_cuban_dict(row, index_sample, illumina_bam, lrs_bam, coverage_dict, family_ped_df, target_regions, cuban_sample_dict, chromosomes, family_alignment_files) -> dict:
     '''Adds sample information to the cuban dictionary based on available techs'''
     family_member = row['Name']
     if family_member!=index_sample:
         # check if illumina bam files for the family are available
-        if os.path.isfile(f'{illumina_bam.replace(index_sample, family_member)}'):
+        if f'{illumina_bam.replace(index_sample, family_member)}' in family_alignment_files:
             # assign family status
             if family_ped_df['Mother'].values[0] == family_member:
                 family_status = 'mother'
@@ -73,8 +85,7 @@ def add_family_member_to_cuban_dict(row, index_sample, illumina_bam, lrs_bam, co
         else:
             logzero.logger.info(f'No Illumina BAM file available for {family_member}')
         # check if LRS bam files for the family are available
-        if os.path.isfile(f'{lrs_bam.replace(index_sample, family_member)}'):
-            logzero.logger.info(f'{lrs_bam.replace(index_sample, family_member)}')
+        if f'{lrs_bam.replace(index_sample, family_member)}' in family_alignment_files:
             # assign family status
             if family_ped_df['Mother'].values[0] == family_member:
                 family_status = 'mother'
@@ -165,7 +176,7 @@ def main():
                             }         
            
         for index, row in family_df.iterrows():
-            cuban_sample_dict = add_family_member_to_cuban_dict(row, args.sample, args.illumina_path, args.lrs_path, coverage_dict, sample_ped_df, target_regions, cuban_sample_dict, chromosomes)
+            cuban_sample_dict = add_family_member_to_cuban_dict(row, args.sample, args.illumina_path, args.lrs_path, coverage_dict, sample_ped_df, target_regions, cuban_sample_dict, chromosomes, args.family_alignment_files)
 
         # Load baseline coverage for control samples
         with open(pathlib.Path(__file__).parent.resolve() / 'resources/baseline_cov_ill.json', 'r') as f:
