@@ -34,6 +34,7 @@ def argparser():
     parser.add_argument('-e', '--exome_regions', required=False, help='BED file with regions targeted for sequencing.', default=None)
     parser.add_argument('-o', '--output_dir', help='Output directory for Cuban Figures.')
     parser.add_argument('-fa', '--family_alignment_files', required=False, nargs='+', default=[], help='List of family alignment files.')
+    parser.add_argument('-cd', '--control_data_dir', required=True, help='Path to control sample data directory.')
     parser.add_argument('-v', '--verbose', action='store_true', help='Logging level.')
     args = parser.parse_args()
     return args
@@ -102,6 +103,8 @@ def add_family_member_to_cuban_dict(row, index_sample, illumina_bam, lrs_bam, co
 def main():
     # read cli
     args = argparser()
+
+    control_data_dir = pathlib.Path(args.control_data_dir).resolve()
 
     if args.verbose:
         logzero.loglevel(logging.DEBUG)
@@ -179,20 +182,20 @@ def main():
             cuban_sample_dict = add_family_member_to_cuban_dict(row, args.sample, args.illumina_path, args.lrs_path, coverage_dict, sample_ped_df, target_regions, cuban_sample_dict, chromosomes, args.family_alignment_files)
 
         # Load baseline coverage for control samples
-        with open(pathlib.Path(__file__).parent.resolve() / 'resources/baseline_cov_ill.json', 'r') as f:
+        with open(control_data_dir / 'resources/baseline_cov_ill.json', 'r') as f:
             coverage_dict['HG002 - Illumina'] = json.load(f)
-        with open(pathlib.Path(__file__).parent.resolve() / 'resources/baseline_cov_pb.json', 'r') as f:
+        with open(control_data_dir / 'resources/baseline_cov_pb.json', 'r') as f:
             coverage_dict['HG002 - PacBio HiFi'] = json.load(f)
                     
         # Samples from control
         control_samples = {'HG002 - Illumina' : {'family_status' : 'control',
                                                 'disease_status' : 'unaffected',
                                                 'technology' : 'ill',
-                                                'bam_name' : str(pathlib.Path(__file__).parent.resolve() / 'HG002.illumina.bam')},
+                                                'bam_name' : str(control_data_dir / 'HG002.illumina.bam')},
                             'HG002 - PacBio HiFi' : {'family_status' : 'control',
                                                     'disease_status' : 'unaffected',
                                                     'technology' : 'pb',
-                                                    'bam_name' : str(pathlib.Path(__file__).parent.resolve() / 'HG002.pacbio.bam'),}}
+                                                    'bam_name' : str(control_data_dir / 'HG002.pacbio.bam'),}}
         cuban_sample_dict.update(control_samples)
 
         # Load repeat data as dataframe

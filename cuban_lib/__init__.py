@@ -10,8 +10,6 @@ from cuban_lib.utils import (
     compute_isize_orientation_dict, 
     add_comma_to_pos
 )
-from cuban_lib.resources import load_baseline_coverage, get_resource_path
-
 __version__ = "0.1.0"
 __all__ = [
     'cuban',
@@ -25,6 +23,4 @@ __all__ = [
     'get_variant_neighbourhood',
     'compute_isize_orientation_dict',
     'add_comma_to_pos',
-    'load_baseline_coverage',
-    'get_resource_path'
 ]
