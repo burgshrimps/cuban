@@ -1,9 +1,19 @@
-# Too large for GitHub (484 MB, limit is 100 MB)
+# Too large for GitHub (484 MB, limit is 100 MB); slim version ships as a release asset
 resources/hg38_repeatmasker.tsv
+resources/hg38_repeatmasker.4col.tsv.gz
+
+# Working documents
+*.docx
+
+# Example outputs
+examples/output/
 
 # Python
 __pycache__/
 *.pyc
+*.egg-info/
+build/
+dist/
 
 # macOS
 .DS_Store
