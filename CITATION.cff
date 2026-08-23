@@ -1,0 +1,16 @@
+cff-version: 1.2.0
+message: "If you use cuban, please cite the accompanying paper (in press)."
+title: cuban
+type: software
+version: 1.0.0
+license: GPL-3.0-or-later
+repository-code: https://github.com/burgshrimps/cuban
+authors:
+  - family-names: Alavi
+    given-names: Nico
+abstract: >-
+  cuban renders multi-panel figures of structural variants from BAM files:
+  coverage, repeat elements, insert-size outliers, discordant read pairs,
+  and per-read CIGAR alignments around the breakpoints.
+# TODO once published in Genome Biology: add preferred-citation with the
+# paper's authors, title, journal, year and DOI.
