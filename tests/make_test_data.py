@@ -59,11 +59,20 @@ def _pair(rng, name, pos1, pos2, flags=None, cigar1=None, cigar2=None,
     return a, b
 
 
-def make_bam(outdir: Path) -> Path:
+def make_bam(outdir: Path, hp: bool = False, name: str = "test.bam") -> Path:
+    """Write the small chr1 BAM. With hp=True, reads additionally carry HP
+    tags (split reads HP:1, spanning pairs HP:2, normal reads alternating
+    1/2 with every third read untagged) for haplotype-band tests."""
     rng = random.Random(SEED)
     header = {"HD": {"VN": "1.6", "SO": "coordinate"},
               "SQ": [{"SN": CONTIG, "LN": CONTIG_LEN}]}
     reads = []
+
+    def _tag(pair, hp_value):
+        if hp and hp_value is not None:
+            for seg in pair:
+                seg.set_tag("HP", hp_value)
+        return pair
 
     # Normal pairs tiling the contig, skipping the deleted interval
     # (homozygous DEL: no reads start inside it).
@@ -75,14 +84,15 @@ def make_bam(outdir: Path) -> Path:
         if DEL_START - READ_LEN < pos2 < DEL_END:
             continue
         jitter = rng.randint(-8, 8)
-        reads.extend(_pair(rng, f"norm{n}", start, pos2 + jitter))
+        hp_value = None if n % 3 == 2 else (n % 3) + 1
+        reads.extend(_tag(_pair(rng, f"norm{n}", start, pos2 + jitter), hp_value))
         n += 1
 
     # Pairs spanning the deletion: mate jumps across -> big insert.
     for i in range(30):
         p1 = DEL_START - INSERT + rng.randint(-60, 40)
         p2 = DEL_END + rng.randint(0, 100)
-        reads.extend(_pair(rng, f"span{i}", p1, p2))
+        reads.extend(_tag(_pair(rng, f"span{i}", p1, p2), 2))
 
     # Soft-clipped split reads at both breakpoints with SA tags.
     half = READ_LEN // 2
@@ -95,7 +105,7 @@ def make_bam(outdir: Path) -> Path:
         a, b = _pair(rng, f"split{i}", p_left, p_right,
                      cigar1=f"{half}M{half}S", cigar2=f"{half}S{half}M",
                      sa1=sa_right, sa2=sa_left)
-        reads.extend((a, b))
+        reads.extend(_tag((a, b), 1))
 
     # A few duplicate-flagged reads (regression: must not desync rows).
     for i in range(5):
@@ -109,11 +119,54 @@ def make_bam(outdir: Path) -> Path:
         reads.extend(_pair(rng, f"lowq{i}", 18_500 + i * 7,
                            18_500 + i * 7 + INSERT - READ_LEN, mapq=5))
 
-    unsorted = outdir / "test.unsorted.bam"
+    unsorted = outdir / (name + ".unsorted")
     with pysam.AlignmentFile(unsorted, "wb", header=header) as bam:
         for r in sorted(reads, key=lambda r: r.reference_start):
             bam.write(r)
-    out = outdir / "test.bam"
+    out = outdir / name
+    pysam.sort("-o", str(out), str(unsorted))
+    unsorted.unlink()
+    pysam.index(str(out))
+    return out
+
+
+LARGE_CONTIG = "chr2"
+LARGE_CONTIG_LEN = 500_000
+LARGE_DEL_START = 200_000
+LARGE_DEL_END = 350_000
+
+
+def make_large_bam(outdir: Path) -> Path:
+    """A sparser BAM on a 500 kb contig with a 150 kb deletion, for
+    large-SV / binned-coverage tests."""
+    rng = random.Random(SEED)
+    header = {"HD": {"VN": "1.6", "SO": "coordinate"},
+              "SQ": [{"SN": LARGE_CONTIG, "LN": LARGE_CONTIG_LEN}]}
+    reads = []
+    n = 0
+    for start in range(0, LARGE_CONTIG_LEN - INSERT - READ_LEN, 100):
+        if LARGE_DEL_START - READ_LEN < start < LARGE_DEL_END:
+            continue
+        pos2 = start + INSERT - READ_LEN
+        if LARGE_DEL_START - READ_LEN < pos2 < LARGE_DEL_END:
+            continue
+        a = pysam.AlignedSegment()
+        a.query_name = f"lnorm{n}"
+        a.reference_id = 0
+        a.reference_start = start
+        a.mapping_quality = 60
+        a.query_sequence = _seq(rng, READ_LEN)
+        a.query_qualities = pysam.qualitystring_to_array("I" * READ_LEN)
+        a.cigarstring = f"{READ_LEN}M"
+        a.flag = 0
+        reads.append(a)
+        n += 1
+
+    unsorted = outdir / "test_large.bam.unsorted"
+    with pysam.AlignmentFile(unsorted, "wb", header=header) as bam:
+        for r in sorted(reads, key=lambda r: r.reference_start):
+            bam.write(r)
+    out = outdir / "test_large.bam"
     pysam.sort("-o", str(out), str(unsorted))
     unsorted.unlink()
     pysam.index(str(out))
@@ -159,9 +212,11 @@ def main(outdir="tests/data"):
     outdir = Path(outdir)
     outdir.mkdir(parents=True, exist_ok=True)
     bam = make_bam(outdir)
+    hp_bam = make_bam(outdir, hp=True, name="test_hp.bam")
+    large_bam = make_large_bam(outdir)
     rep = make_repeats(outdir)
     vcf = make_vcf(outdir)
-    print(f"wrote {bam}, {rep}, {vcf}")
+    print(f"wrote {bam}, {hp_bam}, {large_bam}, {rep}, {vcf}")
 
 
 if __name__ == "__main__":
