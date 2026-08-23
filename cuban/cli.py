@@ -16,6 +16,13 @@ SV_TYPES = ('DEL', 'DUP', 'INS', 'INV', 'BND')
 TECHS = ('ill', 'pb')
 
 
+def _bam_index_missing(bam):
+    """True if `bam` has no discoverable .bai/.csi index next to it."""
+    candidates = (bam + '.bai', bam + '.csi',
+                  os.path.splitext(bam)[0] + '.bai', os.path.splitext(bam)[0] + '.csi')
+    return not any(os.path.isfile(c) for c in candidates)
+
+
 def _parse_sample_spec(spec, chrom):
     """Parse `name:tech:bam[:baseline_cov[:family[:disease]]]`."""
     parts = spec.split(':')
@@ -34,6 +41,11 @@ def _parse_sample_spec(spec, chrom):
         )
     if not os.path.isfile(bam):
         raise argparse.ArgumentTypeError(f"--sample {name}: BAM not found: {bam}")
+    if _bam_index_missing(bam):
+        raise argparse.ArgumentTypeError(
+            f"--sample {name}: no index found for {bam} (looked for .bai/.csi). "
+            f"Run: samtools index {bam}"
+        )
 
     if baseline_field == 'auto':
         baseline_cov = 'auto'
@@ -54,12 +66,37 @@ def _parse_sample_spec(spec, chrom):
     }
 
 
+_EXAMPLES = """\
+EXAMPLES:
+  # Single deletion, one sample
+  cuban --sv-type DEL --chrom chr1 --start 20000 --end 25000 \\
+        --sample proband:ill:sample.bam -o out.png
+
+  # Trio (three samples with family/disease status fields)
+  cuban --sv-type DEL --chrom chr1 --start 20000 --end 25000 \\
+        --sample proband:ill:proband.bam:auto:index:affected \\
+        --sample mother:ill:mother.bam:auto:mother:unaffected \\
+        --sample father:ill:father.bam:auto:father:unaffected \\
+        -o trio.png
+
+  # Breakpoint junction (BND), two independent loci
+  cuban --bnd --chrom chr1 --start 20000 --end 20001 \\
+        --chrom-b chr5 --start-b 90000 --end-b 90001 \\
+        --sample proband:ill:sample.bam -o bnd.png
+
+  # VCF batch mode: one PNG per record in --outdir
+  cuban --vcf variants.vcf --outdir out/ \\
+        --sample proband:ill:sample.bam
+"""
+
+
 def _build_parser():
     from . import __version__
 
     parser = argparse.ArgumentParser(
         prog='cuban',
         description=__doc__,
+        epilog=_EXAMPLES,
         formatter_class=argparse.RawDescriptionHelpFormatter,
     )
     parser.add_argument('--version', action='version', version=f'cuban {__version__}')
@@ -127,6 +164,39 @@ def _resolve_bin_size(bin_size_arg, sv_type, size=None):
     if sv_type == 'BND':
         return 1
     return 1 if size <= 100_000 else max(1, size // 2000)
+
+
+def _check_chroms_in_samples(chroms, samples):
+    """Verify each name in `chroms` is a contig in every sample's BAM header.
+
+    Raises SystemExit with a friendly message (listing example contig names
+    from the offending BAM, to help catch chr1-vs-1 style mismatches) on the
+    first sample/chrom combination that doesn't match.
+    """
+    for name, sample in samples.items():
+        bam = sample['bam_name']
+        with pysam.AlignmentFile(bam) as af:
+            refs = af.references
+        missing = sorted(c for c in chroms if c not in refs)
+        if missing:
+            examples = ', '.join(refs[:5])
+            raise SystemExit(
+                f"--sample {name} ({bam}): chromosome(s) {', '.join(missing)} not found in "
+                f"this BAM's header. Example contigs in this BAM: {examples}"
+            )
+
+
+def _vcf_unique_chroms(records):
+    """Unique chromosome names referenced by `records` (both loci for BND)."""
+    chroms = set()
+    for record in records:
+        chroms.add(record.chrom)
+        sv_type = _sv_type_from_record(record)
+        if sv_type == 'BND' and record.alts:
+            mate = _BND_MATE_RE.search(record.alts[0])
+            if mate is not None:
+                chroms.add(mate.group(1))
+    return chroms
 
 
 def _sv_type_from_record(record):
@@ -202,6 +272,8 @@ def _run_vcf_batch(args, samples, rep_df):
     with pysam.VariantFile(args.vcf) as vcf_in:
         records = list(vcf_in)
     n = len(records)
+
+    _check_chroms_in_samples(_vcf_unique_chroms(records), samples)
 
     n_rendered = n_skipped = n_failed = 0
     for i, record in enumerate(records, start=1):
@@ -279,9 +351,22 @@ def main(argv=None):
         _run_vcf_batch(args, samples, rep_df)
         return
 
+    chroms = {args.chrom}
+    if args.chrom_b is not None:
+        chroms.add(args.chrom_b)
+    _check_chroms_in_samples(chroms, samples)
+
     out_dir = os.path.dirname(os.path.abspath(args.out))
     if out_dir:
         os.makedirs(out_dir, exist_ok=True)
+
+    n_samples = len(samples)
+    if sv_type == 'BND':
+        print(f'[cuban] rendering BND {args.chrom}:{args.start:,}-{args.end:,} <-> '
+              f'{args.chrom_b}:{args.start_b:,}-{args.end_b:,} ({n_samples} sample(s))...')
+    else:
+        print(f'[cuban] rendering {sv_type} {args.chrom}:{args.start:,}-{args.end:,} '
+              f'({n_samples} sample(s))...')
 
     if sv_type == 'BND':
         padding = args.padding if args.padding is not None else 1500

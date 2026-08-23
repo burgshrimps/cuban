@@ -61,6 +61,8 @@ def load_repeats(path=None):
             return empty_repeats()
     if not os.path.isfile(path):
         raise SystemExit(f"repeats file not found: {path}")
+    if os.path.getsize(path) > 1_000_000:
+        print(f"[cuban] loading repeat annotation from {path}...", file=sys.stderr)
     try:
         return pd.read_csv(path, sep="\t", usecols=REPEATS_COLUMNS,
                            dtype=REPEATS_DTYPES)
