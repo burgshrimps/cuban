@@ -1,28 +1,25 @@
-#!/usr/bin/env python3
 """cuban: render structural-variant read-support plots (coverage, CIGAR,
 insert size, orientation) from BAMs around a breakpoint or breakpoint pair."""
 
 import argparse
 import json
 import os
-import sys
 from pathlib import Path
 
 import pandas as pd
 
-CUBAN_DIR = Path(__file__).resolve().parent
-sys.path.insert(0, str(CUBAN_DIR))
-from cuban_lib.visualize import cuban, cuban_bnd  # noqa: E402
+from .visualize import cuban, cuban_bnd
 
+REPO_ROOT = Path(__file__).resolve().parent.parent
 
 SV_TYPES = ('DEL', 'DUP', 'INS', 'INV', 'BND')
 TECHS = ('ill', 'pb')
 
 BASELINE_COV_FILES = {
-    'ill': CUBAN_DIR / 'resources' / 'baseline_cov_ill.json',
-    'pb':  CUBAN_DIR / 'resources' / 'baseline_cov_pb.json',
+    'ill': REPO_ROOT / 'resources' / 'baseline_cov_ill.json',
+    'pb':  REPO_ROOT / 'resources' / 'baseline_cov_pb.json',
 }
-DEFAULT_REPEATS_TSV = CUBAN_DIR / 'resources' / 'hg38_repeatmasker.tsv'
+DEFAULT_REPEATS_TSV = REPO_ROOT / 'resources' / 'hg38_repeatmasker.tsv'
 
 
 def _parse_sample_spec(spec, chrom):
@@ -80,10 +77,14 @@ def _resolve_baseline(tech, chrom, sample_name):
 
 
 def _build_parser():
+    from . import __version__
+
     parser = argparse.ArgumentParser(
+        prog='cuban',
         description=__doc__,
         formatter_class=argparse.RawDescriptionHelpFormatter,
     )
+    parser.add_argument('--version', action='version', version=f'cuban {__version__}')
 
     parser.add_argument('--sv-type', choices=SV_TYPES,
                         help='SV type. BND requires --chrom-b/--start-b/--end-b '
@@ -173,7 +174,3 @@ def main(argv=None):
         )
 
     print(f'[cuban] wrote {args.out}')
-
-
-if __name__ == '__main__':
-    main()

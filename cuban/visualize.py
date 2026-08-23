@@ -8,7 +8,7 @@ import numpy as np
 import pysam
 from scipy.signal import savgol_filter
 
-from cuban_lib.utils import compute_aln_matrix, pad_alignment_matrices, compute_cov_df, compute_rep_df, compute_isize_orientation_dict, add_comma_to_pos
+from .utils import compute_aln_matrix, pad_alignment_matrices, compute_cov_df, compute_rep_df, compute_isize_orientation_dict, add_comma_to_pos
 
 rc_params = {'agg.path.chunksize': 1000000, 'hatch.linewidth': 0.5, 'font.weight': 'bold', 'axes.labelweight': 'bold'}
 

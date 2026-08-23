@@ -1,0 +1,37 @@
+[build-system]
+requires = ["setuptools>=64"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "cuban"
+version = "1.0.0"
+description = "Structural variant visualization from BAM files"
+readme = "README.md"
+license = { text = "GPL-3.0-or-later" }
+authors = [{ name = "Nico Alavi" }]
+requires-python = ">=3.10"
+dependencies = [
+    "numpy>=1.23",
+    "pandas>=1.5",
+    "scipy>=1.9",
+    "matplotlib>=3.6",
+    "pysam>=0.21",
+]
+classifiers = [
+    "Programming Language :: Python :: 3",
+    "License :: OSI Approved :: GNU General Public License v3 or later (GPLv3+)",
+    "Intended Audience :: Science/Research",
+    "Topic :: Scientific/Engineering :: Bio-Informatics",
+]
+
+[project.optional-dependencies]
+test = ["pytest>=7"]
+
+[project.urls]
+Homepage = "https://github.com/burgshrimps/cuban"
+
+[project.scripts]
+cuban = "cuban.cli:main"
+
+[tool.setuptools]
+packages = ["cuban"]
