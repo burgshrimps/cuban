@@ -8,7 +8,8 @@ import numpy as np
 import pysam
 from scipy.signal import savgol_filter
 
-from .utils import compute_aln_matrix, pad_alignment_matrices, compute_cov_df, compute_rep_df, compute_isize_orientation_dict, add_comma_to_pos
+from .utils import compute_aln_matrix, pad_alignment_matrices, compute_rep_df, compute_isize_orientation_dict, add_comma_to_pos
+from . import coverage as coverage_backend
 
 rc_params = {'agg.path.chunksize': 1000000, 'hatch.linewidth': 0.5, 'font.weight': 'bold', 'axes.labelweight': 'bold'}
 
@@ -99,7 +100,7 @@ def add_mapq_overlay(aux_dict: dict, aln_matrix: np.array, ax: plt.axis, offset:
             pass
         
         
-def gather_data(sv_type: str, bam_name: str, chrom: str, start: int, end: int, window: int, padding: int, collapse_ins: bool, rep_df: pd.DataFrame) -> dict:
+def gather_data(sv_type: str, bam_name: str, chrom: str, start: int, end: int, window: int, padding: int, collapse_ins: bool, rep_df: pd.DataFrame, coverage_dir: str=None, cache_dir: str=None, max_reads: int=5000, downsample: str='early_stop') -> dict:
     """ Gathers relevant sequencing data for one sample for a given region.
 
     Args:
@@ -111,22 +112,26 @@ def gather_data(sv_type: str, bam_name: str, chrom: str, start: int, end: int, w
         padding (int): Padding around the SV to compute coverage.
         collapse_ins (bool): Collapse insertions into one base.
         rep_df (pd.DataFrame): Repeat dataframe
+        coverage_dir (str, optional): Directory with precomputed mosdepth output for this sample. Defaults to None.
+        cache_dir (str, optional): Directory to cache mosdepth output in when it has to be computed. Defaults to None.
+        max_reads (int, optional): Maximum number of reads to include per alignment matrix. Defaults to 5000.
+        downsample (str, optional): 'early_stop' or 'random' downsampling strategy. Defaults to 'early_stop'.
 
     Returns:
         dict: Dictionary containing the alignment matrix, coverage, repeat overlap, insert size outliers and discordant orientation.
-    """    
-    
+    """
+
     ### Initialize result dictionary
     result = dict()
 
     ### Load BAM file
     bam = pysam.AlignmentFile(bam_name, 'rb')
-    
+
     ### Compute alignment matrix
     if sv_type in ['DEL', 'DUP', 'INV']:
-        
-        aln_matrix_left, aux_dict_left = compute_aln_matrix(bam, chrom, start - window, start + window, collapse_ins=collapse_ins)
-        aln_matrix_right, aux_dict_right = compute_aln_matrix(bam, chrom, end - window, end + window, collapse_ins=collapse_ins)
+
+        aln_matrix_left, aux_dict_left = compute_aln_matrix(bam, chrom, start - window, start + window, collapse_ins=collapse_ins, max_reads=max_reads, downsample=downsample)
+        aln_matrix_right, aux_dict_right = compute_aln_matrix(bam, chrom, end - window, end + window, collapse_ins=collapse_ins, max_reads=max_reads, downsample=downsample)
         aln_matrix_left, aln_matrix_right = pad_alignment_matrices(aln_matrix_left, aln_matrix_right)
         result['aln_matrix_left'] = aln_matrix_left
         result['aux_dict_left'] = aux_dict_left 
@@ -149,7 +154,7 @@ def gather_data(sv_type: str, bam_name: str, chrom: str, start: int, end: int, w
         if compute_cov:
             cov_padding = max(padding, int((end - start) * 0.2))
             cov_start = max(1, start - cov_padding)
-            cov, cov_minq = compute_cov_df(bam_name, chrom, cov_start, end + cov_padding)
+            cov, cov_minq = coverage_backend.get_coverage(bam_name, chrom, cov_start, end + cov_padding, coverage_dir=coverage_dir, cache_dir=cache_dir)
 
             result['cov_padding'] = cov_padding
             result['left_padding'] = start - cov_start
@@ -170,15 +175,15 @@ def gather_data(sv_type: str, bam_name: str, chrom: str, start: int, end: int, w
     elif sv_type in ['INS', 'BND']:
         
         ### Compute alignment matrix
-        aln_matrix, aux_dict = compute_aln_matrix(bam, chrom, start - window, end + window, collapse_ins=collapse_ins)
+        aln_matrix, aux_dict = compute_aln_matrix(bam, chrom, start - window, end + window, collapse_ins=collapse_ins, max_reads=max_reads, downsample=downsample)
         result['aln_matrix'] = aln_matrix
         result['aux_dict'] = aux_dict
-        
+
         ### Compute coverage
         result['compute_cov'] = True
         cov_padding = padding
         cov_start = max(1, start - cov_padding)
-        cov, cov_minq = compute_cov_df(bam_name, chrom, cov_start, end + cov_padding)
+        cov, cov_minq = coverage_backend.get_coverage(bam_name, chrom, cov_start, end + cov_padding, coverage_dir=coverage_dir, cache_dir=cache_dir)
 
         result['cov_padding'] = cov_padding
         result['left_padding'] = start - cov_start
@@ -477,11 +482,13 @@ def plot_cigar(sv_type: str, data: dict, ax_cig_ill: plt.Axes, colors: list, win
                                 bbox=dict(boxstyle="round,pad=0.3", edgecolor='black', facecolor='white', linewidth=1.3))
         
         
-def cuban(samples: dict, rep_df: pd.DataFrame, sv_type: str, chrom: str, start: int, end: int, padding: int=1500, window: int=100, collapse_ins: bool=True, outfile: str=None, sv_len: int=None):
+def cuban(samples: dict, rep_df: pd.DataFrame, sv_type: str, chrom: str, start: int, end: int, padding: int=1500, window: int=100, collapse_ins: bool=True, outfile: str=None, sv_len: int=None, cache_dir: str=None, max_reads: int=5000, downsample: str='early_stop'):
     """ Visualizes alignment information around a structural variant for one or multiple samples.
 
     Args:
         samples (dict): Dictionary containing sample information. Keys are sample names and values are dictionaries containing family status, disease status, BAM filename and baseline coverage.
+            'baseline_cov' may be a float or the string 'auto' (resolved per-chromosome at render time).
+            'coverage_dir', if present, points at a precomputed mosdepth output directory for that sample.
         rep_df (pd.DataFrame): Repeat dataframe
         sv_type (str): Type of the structural variant
         chrom (str): Chromosome
@@ -491,7 +498,10 @@ def cuban(samples: dict, rep_df: pd.DataFrame, sv_type: str, chrom: str, start: 
         window (int, optional): Window around each breakpoint to collect CIGAR string information for.. Defaults to 100.
         collapse_ins (bool, optional): Collapse insertions into one base.. Defaults to True.
         outfile (str, optional): Output filename. Defaults to None.
-    """    
+        cache_dir (str, optional): Directory to cache mosdepth output in when it has to be computed. Defaults to None.
+        max_reads (int, optional): Maximum number of reads to include per alignment matrix. Defaults to 5000.
+        downsample (str, optional): 'early_stop' or 'random' downsampling strategy. Defaults to 'early_stop'.
+    """
     
     ### Set up figure
     colors = ['white', 'lightgrey', '#b7954b', '#5066a2', '#f0b6a0', '#6ac0b7', '#df624c', 'lightgrey', 'lightgrey']
@@ -527,10 +537,14 @@ def cuban(samples: dict, rep_df: pd.DataFrame, sv_type: str, chrom: str, start: 
             technology = samples[sample]['technology']
             bam_name = samples[sample]['bam_name']
             baseline_cov = samples[sample]['baseline_cov']
-        
+            coverage_dir = samples[sample].get('coverage_dir')
+
+            if baseline_cov == 'auto':
+                baseline_cov = coverage_backend.get_baseline(bam_name, chrom, coverage_dir=coverage_dir, cache_dir=cache_dir)
+
             ### Extract Sequencing Data
-            data = gather_data(sv_type, bam_name, chrom, start, end, window, padding, collapse_ins, rep_df)  
-        
+            data = gather_data(sv_type, bam_name, chrom, start, end, window, padding, collapse_ins, rep_df, coverage_dir=coverage_dir, cache_dir=cache_dir, max_reads=max_reads, downsample=downsample)
+
             ### Define sample axes
             if technology == 'ill':
                 ax_title = plt.subplot(gs[i, 0:4])
@@ -598,11 +612,13 @@ def cuban(samples: dict, rep_df: pd.DataFrame, sv_type: str, chrom: str, start: 
             plt.show()
         
         
-def cuban_bnd(samples: dict, rep_df: pd.DataFrame, chromA: str, startA: int, endA: int, chromB: str, startB: int, endB: int, padding: int=1500, window: int=100, collapse_ins: bool=True, outfile: str=None):
+def cuban_bnd(samples: dict, rep_df: pd.DataFrame, chromA: str, startA: int, endA: int, chromB: str, startB: int, endB: int, padding: int=1500, window: int=100, collapse_ins: bool=True, outfile: str=None, cache_dir: str=None, max_reads: int=5000, downsample: str='early_stop'):
     """ Visualizes alignment information around an SV for one or multiple samples for two loci independently.
 
     Args:
         samples (dict): Dictionary containing sample information. Keys are sample names and values are dictionaries containing family status, disease status, BAM filename and baseline coverage.
+            'baseline_cov' may be a float or the string 'auto' (resolved separately for chromA and chromB at render time).
+            'coverage_dir', if present, points at a precomputed mosdepth output directory for that sample.
         rep_df (pd.DataFrame): Repeat dataframe
         chromA (str): Chromosome of first locus
         startA (int): Start position of first locus
@@ -614,7 +630,10 @@ def cuban_bnd(samples: dict, rep_df: pd.DataFrame, chromA: str, startA: int, end
         window (int, optional): Window around each breakpoint to collect CIGAR string information for.. Defaults to 100.
         collapse_ins (bool, optional): Collapse insertions into one base.. Defaults to True.
         outfile (str, optional): Output filename. Defaults to None.
-    """   
+        cache_dir (str, optional): Directory to cache mosdepth output in when it has to be computed. Defaults to None.
+        max_reads (int, optional): Maximum number of reads to include per alignment matrix. Defaults to 5000.
+        downsample (str, optional): 'early_stop' or 'random' downsampling strategy. Defaults to 'early_stop'.
+    """
     # Set SV type
     sv_type = 'BND' 
     
@@ -652,11 +671,18 @@ def cuban_bnd(samples: dict, rep_df: pd.DataFrame, chromA: str, startA: int, end
             technology = samples[sample]['technology']
             bam_name = samples[sample]['bam_name']
             baseline_cov = samples[sample]['baseline_cov']
-        
+            coverage_dir = samples[sample].get('coverage_dir')
+
+            if baseline_cov == 'auto':
+                baseline_cov_a = coverage_backend.get_baseline(bam_name, chromA, coverage_dir=coverage_dir, cache_dir=cache_dir)
+                baseline_cov_b = coverage_backend.get_baseline(bam_name, chromB, coverage_dir=coverage_dir, cache_dir=cache_dir)
+            else:
+                baseline_cov_a = baseline_cov_b = baseline_cov
+
             ### Extract Sequencing Data
-            dataA = gather_data(sv_type, bam_name, chromA, startA, endA, window, padding, collapse_ins, rep_df)  
-            dataB = gather_data(sv_type, bam_name, chromB, startB, endB, window, padding, collapse_ins, rep_df)
-        
+            dataA = gather_data(sv_type, bam_name, chromA, startA, endA, window, padding, collapse_ins, rep_df, coverage_dir=coverage_dir, cache_dir=cache_dir, max_reads=max_reads, downsample=downsample)
+            dataB = gather_data(sv_type, bam_name, chromB, startB, endB, window, padding, collapse_ins, rep_df, coverage_dir=coverage_dir, cache_dir=cache_dir, max_reads=max_reads, downsample=downsample)
+
             ### Define sample axes
             if technology == 'ill':
                 axes_title = plt.subplot(gs[i, 0:4])
@@ -676,14 +702,14 @@ def cuban_bnd(samples: dict, rep_df: pd.DataFrame, chromA: str, startA: int, end
             
                 ### Create plots for current sample, first locus
                 if dataA['compute_cov']:
-                    plot_cov(startA, endA, dataA, axes_cov_ill[0], padding, baseline_cov)
+                    plot_cov(startA, endA, dataA, axes_cov_ill[0], padding, baseline_cov_a)
                     plot_rep(dataA, axes_cov_ill[0], rep_y_pos_map)
                     plot_isize(dataA, axes_isize_ill[0], padding)
                     plot_orient(dataA, axes_orient_ill[0], padding)
             
                 ### Create plots for current sample, second locus
                 if dataB['compute_cov']:
-                    plot_cov(startB, endB, dataB, axes_cov_ill[1], padding, baseline_cov, plot_label=False)
+                    plot_cov(startB, endB, dataB, axes_cov_ill[1], padding, baseline_cov_b, plot_label=False)
                     plot_rep(dataB, axes_cov_ill[1], rep_y_pos_map)
                     plot_isize(dataB, axes_isize_ill[1], padding, plot_label=False)
                     plot_orient(dataB, axes_orient_ill[1], padding, plot_label=False)
@@ -710,12 +736,12 @@ def cuban_bnd(samples: dict, rep_df: pd.DataFrame, chromA: str, startA: int, end
             
                 ### Create plots for current sample, first locus
                 if dataA['compute_cov']:
-                    plot_cov(startA, endA, dataA, axes_cov_pb[0], padding, baseline_cov)
+                    plot_cov(startA, endA, dataA, axes_cov_pb[0], padding, baseline_cov_a)
                     plot_rep(dataA, axes_cov_pb[0], rep_y_pos_map)
             
                 ### Create plots for current sample, second locus
                 if dataB['compute_cov']:
-                    plot_cov(startB, endB, dataB, axes_cov_pb[1], padding, baseline_cov, plot_label=False)
+                    plot_cov(startB, endB, dataB, axes_cov_pb[1], padding, baseline_cov_b, plot_label=False)
                     plot_rep(dataB, axes_cov_pb[1], rep_y_pos_map)
                 
                 ### Plot joint alignment matrix

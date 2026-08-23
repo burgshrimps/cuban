@@ -1,3 +1,4 @@
+import random
 import warnings
 
 import numpy as np
@@ -13,13 +14,26 @@ def cigartuples_to_array(cigartuples):
     return np.array(cigar_array)
 
 
-def compute_aln_matrix(bam, chrom, start, stop, collapse_ins=True):
-    """ Computes alignment matrix consisting of CIGAR integers for a given region. """
+def compute_aln_matrix(bam, chrom, start, stop, collapse_ins=True, max_reads=5000, downsample='early_stop'):
+    """ Computes alignment matrix consisting of CIGAR integers for a given region.
+
+    Args:
+        max_reads (int, optional): Maximum number of reads to include. None disables downsampling.
+            Defaults to 5000.
+        downsample (str, optional): 'early_stop' stops fetching once max_reads reads are collected;
+            'random' fetches all reads then samples max_reads of them (seeded, deterministic).
+            Defaults to 'early_stop'.
+    """
     size = stop - start
     reads = []
     for read in bam.fetch(chrom, max(0, start), stop):
         if not read.is_unmapped and not read.is_duplicate and not read.is_qcfail:
             reads.append(read)
+            if downsample == 'early_stop' and max_reads is not None and len(reads) >= max_reads:
+                break
+
+    if downsample == 'random' and max_reads is not None and len(reads) > max_reads:
+        reads = random.Random(42).sample(reads, max_reads)
 
     aln_matrix = -1 * np.ones((len(reads), size))
     aux_dict = {'split_idx' : [],
@@ -141,7 +155,7 @@ def pad_alignment_matrices(aln_matrix_left, aln_matrix_right):
     return aln_matrix_left, aln_matrix_right
 
 
-def compute_cov_df(bam_filename, chrom, start, stop, minq=30):
+def compute_cov_df(bam_filename, chrom, start, stop, minq=20):
     """ Computes coverage for given region. Coverage is computed twice. Once for all reads and once for reads with
     mapping quality >= minq. """
     cov = pd.DataFrame([x.split('\t') for x in pysam.depth(bam_filename, '-r', chrom + ':' + str(start) + '-' + str(stop), '-a').split('\n')[:-1]])

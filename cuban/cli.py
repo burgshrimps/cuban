@@ -2,22 +2,18 @@
 insert size, orientation) from BAMs around a breakpoint or breakpoint pair."""
 
 import argparse
-import json
 import os
-from pathlib import Path
+import re
+
+import pysam
 
 from .repeats import empty_repeats, load_repeats
 from .visualize import cuban, cuban_bnd
 
-REPO_ROOT = Path(__file__).resolve().parent.parent
+_BND_MATE_RE = re.compile(r'[\[\]]([^\[\]:]+):(\d+)[\[\]]')
 
 SV_TYPES = ('DEL', 'DUP', 'INS', 'INV', 'BND')
 TECHS = ('ill', 'pb')
-
-BASELINE_COV_FILES = {
-    'ill': REPO_ROOT / 'resources' / 'baseline_cov_ill.json',
-    'pb':  REPO_ROOT / 'resources' / 'baseline_cov_pb.json',
-}
 
 
 def _parse_sample_spec(spec, chrom):
@@ -40,7 +36,7 @@ def _parse_sample_spec(spec, chrom):
         raise argparse.ArgumentTypeError(f"--sample {name}: BAM not found: {bam}")
 
     if baseline_field == 'auto':
-        baseline_cov = _resolve_baseline(tech, chrom, name)
+        baseline_cov = 'auto'
     else:
         try:
             baseline_cov = float(baseline_field)
@@ -56,22 +52,6 @@ def _parse_sample_spec(spec, chrom):
         'bam_name': bam,
         'baseline_cov': baseline_cov,
     }
-
-
-def _resolve_baseline(tech, chrom, sample_name):
-    path = BASELINE_COV_FILES.get(tech)
-    if path is None or not path.is_file():
-        raise SystemExit(
-            f"sample {sample_name}: baseline_cov='auto' but no shipped table for technology={tech}"
-        )
-    with open(path) as fh:
-        data = json.load(fh)
-    if chrom not in data:
-        raise SystemExit(
-            f"sample {sample_name}: baseline_cov='auto' but chromosome {chrom!r} not in {path.name}; "
-            "pass an explicit float in the --sample spec."
-        )
-    return float(data[chrom])
 
 
 def _build_parser():
@@ -90,12 +70,20 @@ def _build_parser():
     parser.add_argument('--bnd', action='store_true',
                         help='render two independent loci side by side (BND mode). '
                              'Implies --sv-type BND; conflicts with any other --sv-type.')
-    parser.add_argument('--chrom', required=True, help='chromosome of the SV (or first locus for --bnd).')
-    parser.add_argument('--start', type=int, required=True, help='start position (1-based).')
-    parser.add_argument('--end', type=int, required=True, help='end position (1-based, inclusive).')
+    parser.add_argument('--chrom', help='chromosome of the SV (or first locus for --bnd). '
+                        'Required unless --vcf is given.')
+    parser.add_argument('--start', type=int, help='start position (1-based). '
+                        'Required unless --vcf is given.')
+    parser.add_argument('--end', type=int, help='end position (1-based, inclusive). '
+                        'Required unless --vcf is given.')
     parser.add_argument('--chrom-b', help='chromosome of the second locus (--bnd only).')
     parser.add_argument('--start-b', type=int, help='start position of the second locus (--bnd only).')
     parser.add_argument('--end-b', type=int, help='end position of the second locus (--bnd only).')
+
+    parser.add_argument('--vcf', help='VCF/BCF of structural variants to batch-render, one PNG per '
+                        'record. Requires --outdir and at least one --sample; mutually exclusive '
+                        'with --chrom/--start/--end/--chrom-b/--start-b/--end-b/--sv-type/--bnd/--out.')
+    parser.add_argument('--outdir', help='output directory for --vcf batch mode.')
 
     parser.add_argument('--repeats',
                         help='RepeatMasker TSV[.gz] with UCSC rmsk columns '
@@ -108,37 +96,156 @@ def _build_parser():
                         help='sample spec (repeatable): name:tech:bam[:baseline_cov[:family[:disease]]]. '
                              'Fields are colon-separated, so the bam path must not contain a colon.')
 
-    parser.add_argument('-o', '--out', required=True, help='output PNG path.')
-    parser.add_argument('--padding', type=int, default=1500,
-                        help='context window around the SV (bp). Default 1500.')
+    parser.add_argument('-o', '--out', help='output PNG path. Required unless --vcf is given.')
+    parser.add_argument('--padding', type=int, default=None,
+                        help='context window around the SV (bp). Default: adaptive, '
+                             'max(1500, round((end-start)/10)) (plain 1500 for --bnd).')
     parser.add_argument('--window', type=int, default=100,
                         help='CIGAR window around each breakpoint (bp). Default 100.')
     parser.add_argument('--no-collapse-ins', dest='collapse_ins', action='store_false',
                         help='do not collapse insertion runs into a single column.')
     parser.add_argument('--sv-len', type=int, default=None,
                         help='explicit SV length (used in the title; non-BND only).')
+    parser.add_argument('--cache-dir', default=None,
+                        help='directory where mosdepth outputs are cached. '
+                             'Default: $CUBAN_DATA_DIR/coverage or ~/.cuban/coverage.')
+    parser.add_argument('--max-reads', type=int, default=5000,
+                        help='maximum number of reads per alignment matrix panel. Default 5000.')
 
     return parser
+
+
+def _sv_type_from_record(record):
+    """SV type from INFO/SVTYPE, falling back to a symbolic ALT like <DEL> or <DEL:ME>."""
+    sv_type = record.info.get('SVTYPE')
+    if not sv_type and record.alts and len(record.alts) == 1:
+        alt = record.alts[0]
+        if alt.startswith('<') and alt.endswith('>'):
+            sv_type = alt[1:-1].split(':')[0]
+    return sv_type
+
+
+def _record_outfile(record, sv_type, outdir):
+    rid = record.id
+    if rid and rid != '.':
+        return os.path.join(outdir, f'{rid}.png')
+    return os.path.join(outdir, f'{record.chrom}_{record.pos}_{sv_type}.png')
+
+
+def _render_vcf_record(record, samples, rep_df, args):
+    """Render one VCF record with `cuban`/`cuban_bnd`.
+
+    Returns (outfile, rendered) where `rendered` is False if the PNG already
+    existed and was left in place. Raises ValueError if the record's SV type
+    or (for BND) mate locus can't be determined.
+    """
+    sv_type = _sv_type_from_record(record)
+    if sv_type not in SV_TYPES:
+        raise ValueError(f'missing/unrecognized SVTYPE ({sv_type!r})')
+
+    outfile = _record_outfile(record, sv_type, args.outdir)
+    if os.path.exists(outfile):
+        return outfile, False
+
+    if sv_type == 'BND':
+        mate = _BND_MATE_RE.search(record.alts[0]) if record.alts else None
+        if mate is None:
+            raise ValueError(f'could not parse BND mate locus from ALT {record.alts!r}')
+        mate_chrom, mate_pos = mate.group(1), int(mate.group(2))
+        padding = args.padding if args.padding is not None else 1500
+        cuban_bnd(
+            samples=samples,
+            rep_df=rep_df,
+            chromA=record.chrom, startA=record.pos, endA=record.pos + 1,
+            chromB=mate_chrom, startB=mate_pos, endB=mate_pos + 1,
+            padding=padding, window=args.window,
+            collapse_ins=args.collapse_ins, outfile=outfile,
+            cache_dir=args.cache_dir, max_reads=args.max_reads,
+        )
+    else:
+        start, end = record.pos, record.stop
+        if sv_type == 'INS' and end <= start:
+            end = start + 1
+        padding = args.padding if args.padding is not None else max(1500, round((end - start) / 10))
+        cuban(
+            samples=samples,
+            rep_df=rep_df,
+            sv_type=sv_type,
+            chrom=record.chrom, start=start, end=end,
+            padding=padding, window=args.window,
+            collapse_ins=args.collapse_ins, outfile=outfile,
+            sv_len=None,
+            cache_dir=args.cache_dir, max_reads=args.max_reads,
+        )
+    return outfile, True
+
+
+def _run_vcf_batch(args, samples, rep_df):
+    os.makedirs(args.outdir, exist_ok=True)
+
+    with pysam.VariantFile(args.vcf) as vcf_in:
+        records = list(vcf_in)
+    n = len(records)
+
+    n_rendered = n_skipped = n_failed = 0
+    for i, record in enumerate(records, start=1):
+        rid = record.id if record.id else '.'
+        try:
+            outfile, rendered = _render_vcf_record(record, samples, rep_df, args)
+        except Exception as e:
+            print(f'[cuban] ({i}/{n}) {rid}: WARNING skipping - {e}')
+            n_failed += 1
+            continue
+        if rendered:
+            print(f'[cuban] ({i}/{n}) {rid} -> {outfile}')
+            n_rendered += 1
+        else:
+            print(f'[cuban] ({i}/{n}) {rid} -> {outfile} ... skipped (exists)')
+            n_skipped += 1
+
+    print(f'[cuban] rendered {n_rendered}, skipped {n_skipped}, failed {n_failed}')
+    if n_failed:
+        raise SystemExit(1)
 
 
 def main(argv=None):
     args = _build_parser().parse_args(argv)
 
-    if args.bnd:
-        if args.sv_type not in (None, 'BND'):
-            raise SystemExit(f'--bnd conflicts with --sv-type {args.sv_type} (--bnd implies BND).')
-        sv_type = 'BND'
-    else:
-        if args.sv_type is None:
-            raise SystemExit('--sv-type is required (or pass --bnd for translocations).')
-        sv_type = args.sv_type
-
-    if sv_type == 'BND':
-        missing = [flag for flag, val in (
+    if args.vcf is not None:
+        conflicting = [flag for flag, val in (
+            ('--chrom', args.chrom), ('--start', args.start), ('--end', args.end),
             ('--chrom-b', args.chrom_b), ('--start-b', args.start_b), ('--end-b', args.end_b),
-        ) if val is None]
-        if missing:
-            raise SystemExit(f"--sv-type BND requires {', '.join(missing)}.")
+            ('--sv-type', args.sv_type), ('--out', args.out),
+        ) if val is not None]
+        if args.bnd:
+            conflicting.append('--bnd')
+        if conflicting:
+            raise SystemExit(f"--vcf cannot be combined with {', '.join(conflicting)}.")
+        if args.outdir is None:
+            raise SystemExit('--vcf requires --outdir.')
+    else:
+        if args.outdir is not None:
+            raise SystemExit('--outdir requires --vcf.')
+        if args.chrom is None or args.start is None or args.end is None:
+            raise SystemExit('--chrom/--start/--end are required (or use --vcf for batch mode).')
+        if args.out is None:
+            raise SystemExit('--out is required (or use --vcf/--outdir for batch mode).')
+
+        if args.bnd:
+            if args.sv_type not in (None, 'BND'):
+                raise SystemExit(f'--bnd conflicts with --sv-type {args.sv_type} (--bnd implies BND).')
+            sv_type = 'BND'
+        else:
+            if args.sv_type is None:
+                raise SystemExit('--sv-type is required (or pass --bnd for translocations).')
+            sv_type = args.sv_type
+
+        if sv_type == 'BND':
+            missing = [flag for flag, val in (
+                ('--chrom-b', args.chrom_b), ('--start-b', args.start_b), ('--end-b', args.end_b),
+            ) if val is None]
+            if missing:
+                raise SystemExit(f"--sv-type BND requires {', '.join(missing)}.")
 
     if args.no_repeats:
         rep_df = empty_repeats()
@@ -152,28 +259,36 @@ def main(argv=None):
             raise SystemExit(f'duplicate --sample name: {name}')
         samples[name] = sample_dict
 
+    if args.vcf is not None:
+        _run_vcf_batch(args, samples, rep_df)
+        return
+
     out_dir = os.path.dirname(os.path.abspath(args.out))
     if out_dir:
         os.makedirs(out_dir, exist_ok=True)
 
     if sv_type == 'BND':
+        padding = args.padding if args.padding is not None else 1500
         cuban_bnd(
             samples=samples,
             rep_df=rep_df,
             chromA=args.chrom, startA=args.start, endA=args.end,
             chromB=args.chrom_b, startB=args.start_b, endB=args.end_b,
-            padding=args.padding, window=args.window,
+            padding=padding, window=args.window,
             collapse_ins=args.collapse_ins, outfile=args.out,
+            cache_dir=args.cache_dir, max_reads=args.max_reads,
         )
     else:
+        padding = args.padding if args.padding is not None else max(1500, round((args.end - args.start) / 10))
         cuban(
             samples=samples,
             rep_df=rep_df,
             sv_type=sv_type,
             chrom=args.chrom, start=args.start, end=args.end,
-            padding=args.padding, window=args.window,
+            padding=padding, window=args.window,
             collapse_ins=args.collapse_ins, outfile=args.out,
             sv_len=args.sv_len,
+            cache_dir=args.cache_dir, max_reads=args.max_reads,
         )
 
     print(f'[cuban] wrote {args.out}')
