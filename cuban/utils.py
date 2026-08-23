@@ -38,9 +38,10 @@ def compute_aln_matrix(bam, chrom, start, stop, collapse_ins=True, max_reads=500
     aln_matrix = -1 * np.ones((len(reads), size))
     aux_dict = {'split_idx' : [],
                 'low_mapq_idx' : [],
+                'reverse_idx': [],
                 'haplotag_idx': [],
                 'name' : [],
-                'discordant_idx_ff': [], 
+                'discordant_idx_ff': [],
                 'discordant_idx_rr': [],
                 'discordant_idx_rf': [],
                 'discordant_idx_tx': []}
@@ -52,6 +53,8 @@ def compute_aln_matrix(bam, chrom, start, stop, collapse_ins=True, max_reads=500
             aux_dict['split_idx'].append(idx)
         if read.mapping_quality < 30:
             aux_dict['low_mapq_idx'].append(idx)
+        if read.is_reverse:
+            aux_dict['reverse_idx'].append(idx)
         if read.has_tag('HP'):
             aux_dict['haplotag_idx'].append(read.get_tag('HP'))
         else:
@@ -153,6 +156,142 @@ def pad_alignment_matrices(aln_matrix_left, aln_matrix_right):
     elif len(aln_matrix_right) > len(aln_matrix_left):
         aln_matrix_left = np.pad(aln_matrix_left, ((0, len(aln_matrix_right) - len(aln_matrix_left)), (0, 0)), 'constant', constant_values=(-1, -1))
     return aln_matrix_left, aln_matrix_right
+
+
+# aux_dict keys that hold one value per read (parallel to matrix rows); everything else is a
+# sparse list of row indices and needs remapping when rows are filtered.
+_PER_ROW_AUX_KEYS = {'name', 'haplotag_idx'}
+
+
+def _subset_aux_dict(aux_dict, mask):
+    """ Restrict aux_dict to rows selected by `mask` (boolean array over the original matrix rows).
+    Per-row lists are sliced; index-list keys are remapped to the new positions and pruned.
+    """
+    kept = np.where(mask)[0]
+    remap = {old: new for new, old in enumerate(kept)}
+    out = {}
+    for key, values in aux_dict.items():
+        if key in _PER_ROW_AUX_KEYS:
+            out[key] = [values[i] for i in kept]
+        else:
+            out[key] = [remap[i] for i in values if i in remap]
+    return out
+
+
+def _build_side_band(aln, aux, mask, band_h, side_tag, gap_after, global_offset):
+    """Slice rows by `mask`, pad up to `band_h` with -1 rows, append `gap_after` trailing
+    gap rows (all -1). Returns (band_matrix, name_list, hp_list, old_to_new_index).
+    Padding/gap rows receive unique sentinel names like `__pad_{side_tag}_{global_row}`
+    so the read-connection name merge cannot accidentally pair them.
+    """
+    kept = np.where(mask)[0]
+    n_real = len(kept)
+    width = aln.shape[1]
+    pad_rows = band_h - n_real
+    total_rows = band_h + gap_after
+
+    band = np.full((total_rows, width), -1, dtype=aln.dtype)
+    if n_real > 0:
+        band[:n_real] = aln[mask]
+
+    names = []
+    hps = []
+    old_to_new = {}
+    for new_local, old in enumerate(kept):
+        old_to_new[int(old)] = global_offset + new_local
+        names.append(aux['name'][int(old)])
+        hps.append(aux['haplotag_idx'][int(old)])
+    for j in range(pad_rows + gap_after):
+        row_pos = global_offset + n_real + j
+        names.append(f'__pad_{side_tag}_{row_pos}')
+        hps.append(-1)
+
+    return band, names, hps, old_to_new
+
+
+def _assemble_reordered_aux(template_aux, names, hps, old_to_new):
+    """Build a reordered aux_dict matching the layout produced by _build_side_band concatenation.
+    Index-list keys are remapped via `old_to_new` (entries outside the map are dropped);
+    per-row keys come from the assembled `names`/`hps` lists.
+    """
+    out = {}
+    for key, values in template_aux.items():
+        if key == 'name':
+            out[key] = names
+        elif key == 'haplotag_idx':
+            out[key] = hps
+        else:
+            out[key] = [old_to_new[i] for i in values if i in old_to_new]
+    return out
+
+
+def reorder_by_hp(aln_matrix_left, aux_dict_left,
+                  aln_matrix_right=None, aux_dict_right=None, gap=3):
+    """Reorder rows of one or two alignment matrices so they're grouped by HP tag
+    (order: HP1, HP2, untagged=-1) with `gap` all-`-1` rows between groups.
+
+    Both sides end up with identical total row count. The side with fewer reads in a band
+    is padded with `-1` rows. aux_dict index-list keys (split_idx, low_mapq_idx, etc.) are
+    remapped to the new row positions; per-row lists (name, haplotag_idx) are rebuilt with
+    sentinel entries at padding/gap rows.
+
+    Returns (aln_left_new, aux_left_new, aln_right_new, aux_right_new, bands), where
+    `bands` is a list of (hp_value, y_center, n_reads_total). When `aln_matrix_right is None`,
+    the right entries are returned as `None` and `n_reads_total == n_left`.
+    """
+    hp_left = np.array(aux_dict_left['haplotag_idx'])
+    has_right = aln_matrix_right is not None
+    hp_right = np.array(aux_dict_right['haplotag_idx']) if has_right else None
+
+    groups = []
+    for hp in (1, 2, -1):
+        mask_l = hp_left == hp
+        n_l = int(mask_l.sum())
+        if has_right:
+            mask_r = hp_right == hp
+            n_r = int(mask_r.sum())
+        else:
+            mask_r = None
+            n_r = 0
+        if n_l == 0 and n_r == 0:
+            continue
+        groups.append((hp, mask_l, n_l, mask_r, n_r))
+
+    left_bands, left_names, left_hps = [], [], []
+    right_bands, right_names, right_hps = [], [], []
+    left_remap, right_remap = {}, {}
+    bands_info = []
+
+    offset = 0
+    for idx, (hp, mask_l, n_l, mask_r, n_r) in enumerate(groups):
+        band_h = max(n_l, n_r) if has_right else n_l
+        gap_after = gap if idx < len(groups) - 1 else 0
+
+        l_band, l_names, l_hps, l_map = _build_side_band(
+            aln_matrix_left, aux_dict_left, mask_l, band_h, 'l', gap_after, offset)
+        left_bands.append(l_band); left_names.extend(l_names); left_hps.extend(l_hps)
+        left_remap.update(l_map)
+
+        if has_right:
+            r_band, r_names, r_hps, r_map = _build_side_band(
+                aln_matrix_right, aux_dict_right, mask_r, band_h, 'r', gap_after, offset)
+            right_bands.append(r_band); right_names.extend(r_names); right_hps.extend(r_hps)
+            right_remap.update(r_map)
+
+        bands_info.append((hp, offset + band_h / 2 - 0.5, (n_l + n_r) if has_right else n_l))
+        offset += band_h + gap_after
+
+    aln_left_new = np.concatenate(left_bands, axis=0)
+    aux_left_new = _assemble_reordered_aux(aux_dict_left, left_names, left_hps, left_remap)
+
+    if has_right:
+        aln_right_new = np.concatenate(right_bands, axis=0)
+        aux_right_new = _assemble_reordered_aux(aux_dict_right, right_names, right_hps, right_remap)
+    else:
+        aln_right_new = None
+        aux_right_new = None
+
+    return aln_left_new, aux_left_new, aln_right_new, aux_right_new, bands_info
 
 
 def compute_cov_df(bam_filename, chrom, start, stop, minq=20):

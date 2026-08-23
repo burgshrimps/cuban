@@ -111,8 +111,22 @@ def _build_parser():
                              'Default: $CUBAN_DATA_DIR/coverage or ~/.cuban/coverage.')
     parser.add_argument('--max-reads', type=int, default=5000,
                         help='maximum number of reads per alignment matrix panel. Default 5000.')
+    parser.add_argument('--bin-size', type=int, default=None,
+                        help='coverage bin size in bp. Default: auto (1 for SVs <= 100 kb, '
+                             'else ~size/2000; always 1 for BND).')
 
     return parser
+
+
+def _resolve_bin_size(bin_size_arg, sv_type, size=None):
+    """ Resolves the coverage bin size: explicit --bin-size wins; otherwise auto: always 1 for
+    BND (two independent breakpoints, not a sized interval), 1 for SVs <= 100 kb, else
+    size // 2000 (minimum 1). """
+    if bin_size_arg is not None:
+        return bin_size_arg
+    if sv_type == 'BND':
+        return 1
+    return 1 if size <= 100_000 else max(1, size // 2000)
 
 
 def _sv_type_from_record(record):
@@ -153,6 +167,7 @@ def _render_vcf_record(record, samples, rep_df, args):
             raise ValueError(f'could not parse BND mate locus from ALT {record.alts!r}')
         mate_chrom, mate_pos = mate.group(1), int(mate.group(2))
         padding = args.padding if args.padding is not None else 1500
+        bin_size = _resolve_bin_size(args.bin_size, 'BND')
         cuban_bnd(
             samples=samples,
             rep_df=rep_df,
@@ -160,13 +175,14 @@ def _render_vcf_record(record, samples, rep_df, args):
             chromB=mate_chrom, startB=mate_pos, endB=mate_pos + 1,
             padding=padding, window=args.window,
             collapse_ins=args.collapse_ins, outfile=outfile,
-            cache_dir=args.cache_dir, max_reads=args.max_reads,
+            cache_dir=args.cache_dir, max_reads=args.max_reads, bin_size=bin_size,
         )
     else:
         start, end = record.pos, record.stop
         if sv_type == 'INS' and end <= start:
             end = start + 1
         padding = args.padding if args.padding is not None else max(1500, round((end - start) / 10))
+        bin_size = _resolve_bin_size(args.bin_size, sv_type, end - start)
         cuban(
             samples=samples,
             rep_df=rep_df,
@@ -175,7 +191,7 @@ def _render_vcf_record(record, samples, rep_df, args):
             padding=padding, window=args.window,
             collapse_ins=args.collapse_ins, outfile=outfile,
             sv_len=None,
-            cache_dir=args.cache_dir, max_reads=args.max_reads,
+            cache_dir=args.cache_dir, max_reads=args.max_reads, bin_size=bin_size,
         )
     return outfile, True
 
@@ -269,6 +285,7 @@ def main(argv=None):
 
     if sv_type == 'BND':
         padding = args.padding if args.padding is not None else 1500
+        bin_size = _resolve_bin_size(args.bin_size, 'BND')
         cuban_bnd(
             samples=samples,
             rep_df=rep_df,
@@ -276,10 +293,11 @@ def main(argv=None):
             chromB=args.chrom_b, startB=args.start_b, endB=args.end_b,
             padding=padding, window=args.window,
             collapse_ins=args.collapse_ins, outfile=args.out,
-            cache_dir=args.cache_dir, max_reads=args.max_reads,
+            cache_dir=args.cache_dir, max_reads=args.max_reads, bin_size=bin_size,
         )
     else:
         padding = args.padding if args.padding is not None else max(1500, round((args.end - args.start) / 10))
+        bin_size = _resolve_bin_size(args.bin_size, sv_type, args.end - args.start)
         cuban(
             samples=samples,
             rep_df=rep_df,
@@ -288,7 +306,7 @@ def main(argv=None):
             padding=padding, window=args.window,
             collapse_ins=args.collapse_ins, outfile=args.out,
             sv_len=args.sv_len,
-            cache_dir=args.cache_dir, max_reads=args.max_reads,
+            cache_dir=args.cache_dir, max_reads=args.max_reads, bin_size=bin_size,
         )
 
     print(f'[cuban] wrote {args.out}')

@@ -82,6 +82,31 @@ def _run_mosdepth(mosdepth_bin, prefix, bam_path, chrom, minq):
         raise RuntimeError(f'mosdepth did not produce expected output {per_base}')
 
 
+def _mosdepth_prefix_binned(cache_dir, bam_path, chrom, minq, bin_size):
+    """ Cache-dir prefix for the --by binned mosdepth run, distinct from the per-base prefix
+    so binned and per-base outputs never collide in the cache. """
+    root = _cache_root(cache_dir) / _bam_cache_key(bam_path)
+    root.mkdir(parents=True, exist_ok=True)
+    return root / f'{chrom}.q{minq}.by{bin_size}'
+
+
+def _run_mosdepth_binned(mosdepth_bin, prefix, bam_path, chrom, minq, bin_size):
+    """ Runs mosdepth restricted to `chrom` with --by bin_size --no-per-base into `prefix`,
+    unless cached outputs already exist. The summary file is still produced (baseline lookup
+    is unaffected by --no-per-base). """
+    regions = Path(f'{prefix}.regions.bed.gz')
+    summary = Path(f'{prefix}.mosdepth.summary.txt')
+    if regions.exists() and summary.exists():
+        return  # cache hit, reuse silently
+
+    print(f'[cuban] running mosdepth on {bam_path} ({chrom}, --by {bin_size})...', file=sys.stderr)
+    cmd = [mosdepth_bin, '--chrom', chrom, '--mapq', str(minq), '--by', str(bin_size),
+           '--no-per-base', str(prefix), str(bam_path)]
+    subprocess.run(cmd, check=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+    if not regions.exists():
+        raise RuntimeError(f'mosdepth did not produce expected output {regions}')
+
+
 def _read_mosdepth_region(bed_path, chrom, start, stop):
     """ Per-base depth array for [start, stop] (1-based, inclusive). Length == stop - start + 1.
     mosdepth BED is 0-based half-open and densely tiles the chromosome (every position belongs
@@ -114,6 +139,43 @@ def _cov_df_from_bed(bed_path, chrom, start, stop):
     return pd.DataFrame({0: chroms, 1: pos, 2: depths})
 
 
+def _cov_df_from_regions_bed(bed_path, chrom, start, stop):
+    """ Builds a binned coverage DataFrame from a mosdepth --by regions BED
+    (cols: chrom, start, end, mean depth). Same column semantics as _cov_df_from_bed,
+    but col 1 is the bin-start offset from `start` (not necessarily 0 for the first row,
+    since mosdepth's --by windows are chromosome-relative, not region-relative) and
+    col 2 is the mosdepth-reported mean depth for that window. """
+    csi = bed_path + '.csi'
+    index = csi if os.path.exists(csi) else None
+    pos, depths = [], []
+    with pysam.TabixFile(bed_path, parser=pysam.asTuple(), index=index) as tbx:
+        for row in tbx.fetch(chrom, start - 1, stop):
+            pos.append(int(row[1]) - (start - 1))
+            depths.append(float(row[3]))
+    if not pos:
+        pos, depths = [0], [0.0]
+    chroms = np.full(len(pos), chrom, dtype=object)
+    return pd.DataFrame({0: chroms, 1: np.array(pos, dtype=np.int64), 2: np.array(depths, dtype=np.float64)})
+
+
+def _bin_cov_df(df, bin_size):
+    """ Bins a per-base coverage DataFrame (col 1: bp offset, col 2: depth) into fixed-width
+    windows by averaging bin_size consecutive rows (numpy reshape/pad; the final, possibly
+    partial, bin is averaged over its actual rows via a NaN pad). Same column semantics,
+    with col 1 now the bin-start offset. """
+    n = len(df)
+    depths = df[2].to_numpy(dtype=np.float64)
+    pad = (-n) % bin_size
+    if pad:
+        depths = np.concatenate([depths, np.full(pad, np.nan)])
+    means = np.nanmean(depths.reshape(-1, bin_size), axis=1)
+    n_bins = len(means)
+    start_offset = int(df[1].iloc[0])
+    positions = start_offset + np.arange(n_bins, dtype=np.int64) * bin_size
+    chroms = np.full(n_bins, df[0].iloc[0], dtype=object)
+    return pd.DataFrame({0: chroms, 1: positions, 2: means})
+
+
 def _baseline_from_summary(summary_path, chrom):
     """ Reads the per-chromosome mean depth out of a mosdepth .mosdepth.summary.txt file. """
     df = pd.read_csv(summary_path, sep='\t')
@@ -123,10 +185,15 @@ def _baseline_from_summary(summary_path, chrom):
     return float(row['mean'].iloc[0])
 
 
-def get_coverage(bam_path, chrom, start, stop, coverage_dir=None, cache_dir=None, minq=DEFAULT_MINQ):
+def get_coverage(bam_path, chrom, start, stop, coverage_dir=None, cache_dir=None, minq=DEFAULT_MINQ, bin_size=1):
     """ Computes coverage for a region, once unfiltered and once at mapping quality >= minq.
 
     Returns (cov, cov_minq) with exactly the same DataFrame shape as compute_cov_df.
+
+    bin_size > 1 averages coverage into fixed-width windows for large regions: on the
+    auto-run mosdepth path this is done by mosdepth itself (--by/--no-per-base, cached
+    separately from the per-base run); on the coverage_dir and pysam-fallback paths, the
+    per-base frame is computed as usual and then binned in-process.
     """
     if coverage_dir is not None:
         q0_path = os.path.join(coverage_dir, 'mosdepth.q0.per-base.bed.gz')
@@ -136,10 +203,23 @@ def get_coverage(bam_path, chrom, start, stop, coverage_dir=None, cache_dir=None
                 f"coverage_dir '{coverage_dir}' is missing mosdepth per-base BED(s) for minq={minq} "
                 f"(expected 'mosdepth.q0.per-base.bed.gz' and 'mosdepth.q{minq}.per-base.bed.gz')"
             )
-        return _cov_df_from_bed(q0_path, chrom, start, stop), _cov_df_from_bed(qn_path, chrom, start, stop)
+        cov = _cov_df_from_bed(q0_path, chrom, start, stop)
+        cov_minq = _cov_df_from_bed(qn_path, chrom, start, stop)
+        if bin_size > 1:
+            cov, cov_minq = _bin_cov_df(cov, bin_size), _bin_cov_df(cov_minq, bin_size)
+        return cov, cov_minq
 
     mosdepth_bin = _find_mosdepth()
     if mosdepth_bin is not None:
+        if bin_size > 1:
+            prefix0 = _mosdepth_prefix_binned(cache_dir, bam_path, chrom, 0, bin_size)
+            prefixn = _mosdepth_prefix_binned(cache_dir, bam_path, chrom, minq, bin_size)
+            _run_mosdepth_binned(mosdepth_bin, prefix0, bam_path, chrom, 0, bin_size)
+            _run_mosdepth_binned(mosdepth_bin, prefixn, bam_path, chrom, minq, bin_size)
+            q0_path = f'{prefix0}.regions.bed.gz'
+            qn_path = f'{prefixn}.regions.bed.gz'
+            return _cov_df_from_regions_bed(q0_path, chrom, start, stop), _cov_df_from_regions_bed(qn_path, chrom, start, stop)
+
         prefix0 = _mosdepth_prefix(cache_dir, bam_path, chrom, 0)
         prefixn = _mosdepth_prefix(cache_dir, bam_path, chrom, minq)
         _run_mosdepth(mosdepth_bin, prefix0, bam_path, chrom, 0)
@@ -149,7 +229,10 @@ def get_coverage(bam_path, chrom, start, stop, coverage_dir=None, cache_dir=None
         return _cov_df_from_bed(q0_path, chrom, start, stop), _cov_df_from_bed(qn_path, chrom, start, stop)
 
     warnings.warn(_MOSDEPTH_MISSING_MSG)
-    return compute_cov_df(bam_path, chrom, start, stop, minq=minq)
+    cov, cov_minq = compute_cov_df(bam_path, chrom, start, stop, minq=minq)
+    if bin_size > 1:
+        cov, cov_minq = _bin_cov_df(cov, bin_size), _bin_cov_df(cov_minq, bin_size)
+    return cov, cov_minq
 
 
 def get_baseline(bam_path, chrom, coverage_dir=None, cache_dir=None):
