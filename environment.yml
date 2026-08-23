@@ -1,0 +1,19 @@
+name: cuban
+channels:
+  - conda-forge
+  - bioconda
+dependencies:
+  - python=3.10
+  - pip
+  - numpy
+  - pandas
+  - scipy
+  - matplotlib
+  - seaborn
+  - pyyaml
+  - pysam
+  - pybedtools
+  - pyBigWig
+  - bioframe
+  - jupyter
+  - ipykernel

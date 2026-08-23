@@ -1,0 +1,9 @@
+# Too large for GitHub (484 MB, limit is 100 MB)
+resources/hg38_repeatmasker.tsv
+
+# Python
+__pycache__/
+*.pyc
+
+# macOS
+.DS_Store
