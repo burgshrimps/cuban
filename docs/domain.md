@@ -16,13 +16,13 @@
 | Code | Meaning     | Display Color        |
 |------|-------------|----------------------|
 | -1   | No coverage | white                |
-| 0    | Match       | white                |
-| 1    | Insertion   | orange (`#f0b6a0`)   |
+| 0    | Match       | lightgrey            |
+| 1    | Insertion   | tan (`#b7954b`)      |
 | 2    | Deletion    | blue (`#5066a2`)     |
-| 3    | Ref skip    | teal (`#6ac0b7`)     |
-| 4    | Soft clip   | (overlay hatch `||`) |
-| 5    | Hard clip   | (overlay hatch `||`) |
-| 6    | Padding     | red (`#df624c`)      |
+| 3    | Ref skip    | orange (`#f0b6a0`)   |
+| 4    | Soft clip   | teal (`#6ac0b7`)     |
+| 5    | Hard clip   | red (`#df624c`)      |
+| 6    | Padding     | lightgrey            |
 | 7    | Seq match   | lightgrey            |
 | 8    | Seq mismatch| lightgrey            |
 

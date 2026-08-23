@@ -72,8 +72,8 @@ each read:
 | ![normal](img/read-normal.png) light gray | normally aligned read |
 | ![low mapq](img/read-low-mapq.png) dark gray | mapping quality < 30 — the read aligns to multiple positions in the reference |
 | ![deletion](img/read-deletion.png) blue | small deleted segment within the read |
-| ![insertion](img/read-insertion.png) yellow | small inserted segment within the read |
-| ![soft clip](img/read-soft-clipped.png) green | soft-clipped read — only part of the read aligns; the clipped part (green) can indicate a breakpoint |
+| ![insertion](img/read-insertion.png) tan | small inserted segment within the read |
+| ![soft clip](img/read-soft-clipped.png) teal | soft-clipped read — only part of the read aligns; the clipped part (teal) can indicate a breakpoint |
 | ![hard clip](img/read-hard-clipped.png) red | hard-clipped read — as above, but the clipped bases are not stored in the BAM |
 | ![split a](img/read-split-a.png) ![split b](img/read-split-b.png) black grid overlay | split read — parts of the read align to two different positions |
 | ![rf](img/overlay-reverse-forward.png) dark blue overlay | read pair in reverse-forward orientation |
