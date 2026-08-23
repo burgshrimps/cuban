@@ -1,0 +1,5 @@
+genoName	genoStart	genoEnd	repClass
+chr1	19500	19800	LINE
+chr1	19900	20100	SINE
+chr1	24800	25300	Simple_repeat
+chr1	30000	30500	LTR

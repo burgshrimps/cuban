@@ -1,26 +1,16 @@
 import pandas as pd
-import warnings
 import matplotlib.pyplot as plt
 import matplotlib.patches as mplpatches
 import matplotlib as mpl
 from matplotlib.colors import ListedColormap
 from matplotlib import gridspec
-from matplotlib import cm
-import matplotlib.lines as mlines
 import numpy as np
 import pysam
-import random 
 from scipy.signal import savgol_filter
-from scipy.stats import gaussian_kde
 
-from cuban_lib.utils import compute_aln_matrix, pad_alignment_matrices, compute_cov_df, compute_rep_df, get_variant_neighbourhood, compute_isize_orientation_dict, add_comma_to_pos
+from cuban_lib.utils import compute_aln_matrix, pad_alignment_matrices, compute_cov_df, compute_rep_df, compute_isize_orientation_dict, add_comma_to_pos
 
-mpl.rcParams['agg.path.chunksize'] = 1000000
-pd.set_option('display.max_columns', None)
-pd.set_option('display.float_format', lambda x: '%.3f' % x)
-warnings.simplefilter(action='ignore', category=FutureWarning)
-warnings.simplefilter(action='ignore', category=RuntimeWarning)
-plt.style.use('ggplot')
+rc_params = {'agg.path.chunksize': 1000000, 'hatch.linewidth': 0.5, 'font.weight': 'bold', 'axes.labelweight': 'bold'}
 
 
 rep_y_pos_map = {'LINE' : (-6, '#6ac0b7'),
@@ -158,9 +148,11 @@ def gather_data(sv_type: str, bam_name: str, chrom: str, start: int, end: int, w
         ### Compute coverage
         if compute_cov:
             cov_padding = max(padding, int((end - start) * 0.2))
-            cov, cov_minq = compute_cov_df(bam_name, chrom, max(1, start - cov_padding), end + cov_padding)
-            
+            cov_start = max(1, start - cov_padding)
+            cov, cov_minq = compute_cov_df(bam_name, chrom, cov_start, end + cov_padding)
+
             result['cov_padding'] = cov_padding
+            result['left_padding'] = start - cov_start
             result['cov'] = cov
             result['cov_minq'] = cov_minq
             if end - start > 1000 and end - start < 100000:
@@ -168,9 +160,9 @@ def gather_data(sv_type: str, bam_name: str, chrom: str, start: int, end: int, w
                 result['cov_minq_smoothed'] = cov_minq_smoothed
                 
             ### Compute insert size outliers and discordant orientation
-            isize_orient_dict = compute_isize_orientation_dict(bam_name, chrom, max(1, start - cov_padding), end + cov_padding)
+            isize_orient_dict = compute_isize_orientation_dict(bam_name, chrom, cov_start, end + cov_padding)
             result['isize_orient_dict'] = isize_orient_dict
-            
+
         ### Compute repeat overlap
         rep_df_sample = compute_rep_df(rep_df, chrom, start, end, padding=padding)
         result['rep_df'] = rep_df_sample
@@ -185,16 +177,18 @@ def gather_data(sv_type: str, bam_name: str, chrom: str, start: int, end: int, w
         ### Compute coverage
         result['compute_cov'] = True
         cov_padding = padding
-        cov, cov_minq = compute_cov_df(bam_name, chrom, max(1, start - cov_padding), end + cov_padding)
-        
+        cov_start = max(1, start - cov_padding)
+        cov, cov_minq = compute_cov_df(bam_name, chrom, cov_start, end + cov_padding)
+
         result['cov_padding'] = cov_padding
+        result['left_padding'] = start - cov_start
         result['cov'] = cov
         result['cov_minq'] = cov_minq
         cov_minq_smoothed = savgol_filter(cov_minq[2], 25, 3)
         result['cov_minq_smoothed'] = cov_minq_smoothed
-        
+
         ### Compute insert size outliers and discordant orientation
-        isize_orient_dict = compute_isize_orientation_dict(bam_name, chrom, max(1, start - cov_padding), end + cov_padding)
+        isize_orient_dict = compute_isize_orientation_dict(bam_name, chrom, cov_start, end + cov_padding)
         result['isize_orient_dict'] = isize_orient_dict
         
         ### Compute repeat overlap
@@ -229,14 +223,17 @@ def plot_cov(start: int, end: int, data: dict, ax_cov_ill: plt.Axes, padding: in
     if baseline_cov is not None:
         ax_cov_ill.axhline(y=baseline_cov, color='#df624c', linewidth=1, linestyle='--')
     ax_cov_ill.fill_between(cov[1], cov[2], color="grey", alpha=0.2)
-    ax_cov_ill.axvline(x=padding, color='black', linewidth=1, linestyle='--')
+    ax_cov_ill.axvline(x=data['left_padding'], color='black', linewidth=1, linestyle='--')
     ax_cov_ill.axvline(x=cov.iloc[-1, 1] - padding, color='black', linewidth=1, linestyle='--')
     ax_cov_ill.set_xlim(left=0, right=cov.iloc[-1, 1])
     ax_cov_ill.set_xticks([])
     yticks = ax_cov_ill.get_yticks()
     yticks_filtered = yticks[yticks >= 0]
     ax_cov_ill.set_yticks(yticks_filtered)
-    ax_cov_ill.set_ylim(bottom=-70, top=min(yticks[-1], 4 * baseline_cov))
+    if baseline_cov is not None and baseline_cov > 0:
+        ax_cov_ill.set_ylim(bottom=-70, top=min(yticks[-1], 4 * baseline_cov))
+    else:
+        ax_cov_ill.set_ylim(bottom=-70, top=yticks[-1])
     if plot_label:
         ax_cov_ill.text(0, 1.1, 'Coverage', transform=ax_cov_ill.transAxes, ha='left',
                         bbox=dict(boxstyle="round,pad=0.3", edgecolor='black', facecolor='white', linewidth=1.3))
@@ -297,7 +294,7 @@ def plot_isize(data: dict, ax_isize_ill: plt.Axes, padding: int, plot_label: boo
     ### Set plot limits and labels
     ax_isize_ill.set_xlim(left=0, right=cov.iloc[-1, 1])
     ax_isize_ill.set_xticks([])
-    ax_isize_ill.axvline(x=padding, color='black', linewidth=1, linestyle='--')
+    ax_isize_ill.axvline(x=data['left_padding'], color='black', linewidth=1, linestyle='--')
     ax_isize_ill.axvline(x=cov.iloc[-1, 1] - padding, color='black', linewidth=1, linestyle='--')
     
     if plot_label:
@@ -347,7 +344,7 @@ def plot_orient(data: dict, ax_orient_ill: plt.Axes, padding: int, plot_label: b
     
     ### Set plot limits and labels
     ax_orient_ill.set_xlim(left=0, right=cov.iloc[-1, 1])
-    ax_orient_ill.axvline(x=padding, color='black', linewidth=1, linestyle='--')
+    ax_orient_ill.axvline(x=data['left_padding'], color='black', linewidth=1, linestyle='--')
     ax_orient_ill.axvline(x=cov.iloc[-1, 1] - padding, color='black', linewidth=1, linestyle='--')
     
     if plot_label:
@@ -394,9 +391,9 @@ def plot_cigar(sv_type: str, data: dict, ax_cig_ill: plt.Axes, colors: list, win
             aln_matrix = np.concatenate((aln_matrix_left, aln_matrix_middle, aln_matrix_right), axis=1)
         
         ### Plot
-        im = ax_cig_ill.imshow(aln_matrix, cmap=ListedColormap(colors), vmin=-1, vmax=8)
+        ax_cig_ill.imshow(aln_matrix, cmap=ListedColormap(colors), vmin=-1, vmax=8)
 
-        ### Left Breakpoint 
+        ### Left Breakpoint
         ax_cig_ill.axvline(x=window, color='black', linewidth=1, linestyle='--')
         add_mapq_overlay(aux_dict_left, aln_matrix_left, ax_cig_ill)
         if tech == 'ill':
@@ -460,8 +457,8 @@ def plot_cigar(sv_type: str, data: dict, ax_cig_ill: plt.Axes, colors: list, win
         aux_dict = data['aux_dict']
         
         ### Plot
-        im = ax_cig_ill.imshow(aln_matrix, cmap=ListedColormap(colors), vmin=-1, vmax=8)
-        
+        ax_cig_ill.imshow(aln_matrix, cmap=ListedColormap(colors), vmin=-1, vmax=8)
+
         ### Breakpoint
         ax_cig_ill.axvline(x=window, color='black', linewidth=1, linestyle='--')
         add_mapq_overlay(aux_dict, aln_matrix, ax_cig_ill)
@@ -501,6 +498,8 @@ def cuban(samples: dict, rep_df: pd.DataFrame, sv_type: str, chrom: str, start: 
     num_samples = len(samples)
     num_rows = 0
     height_ratios = []
+    if not samples:
+        raise ValueError('No samples provided.')
     for sample in samples:
         technology = samples[sample]['technology']
         if technology == 'ill':
@@ -509,94 +508,94 @@ def cuban(samples: dict, rep_df: pd.DataFrame, sv_type: str, chrom: str, start: 
         elif technology == 'pb':
             num_rows += 3
             height_ratios.extend([1,3,7])
+        else:
+            raise ValueError(f"Sample '{sample}' has invalid technology '{technology}': technology must be 'ill' or 'pb'")
         
-    fig = plt.figure(figsize=(25, 11 * num_samples))
-    gs = gridspec.GridSpec(num_rows, 4, height_ratios=height_ratios, hspace=0.2, wspace=0.5, figure=fig)
-    plt.rcParams['hatch.linewidth'] = 0.5
-    plt.rcParams["font.weight"] = "bold"
-    plt.rcParams["axes.labelweight"] = "bold"
+    with plt.style.context('ggplot'), mpl.rc_context(rc_params):
+        fig = plt.figure(figsize=(25, 11 * num_samples))
+        gs = gridspec.GridSpec(num_rows, 4, height_ratios=height_ratios, hspace=0.2, wspace=0.5, figure=fig)
     
-    ### Set up parameters
-    padding = max(padding, int((end - start) * 0.2))
-    i = 0
-    plotted_main_title = False
-    for sample in samples:
-        ### Get sample info
-        name = sample
-        family_status = samples[sample]['family_status']
-        disease_status = samples[sample]['disease_status']
-        technology = samples[sample]['technology']
-        bam_name = samples[sample]['bam_name']
-        baseline_cov = samples[sample]['baseline_cov']
+        ### Set up parameters
+        padding = max(padding, int((end - start) * 0.2))
+        i = 0
+        plotted_main_title = False
+        for sample in samples:
+            ### Get sample info
+            name = sample
+            family_status = samples[sample]['family_status']
+            disease_status = samples[sample]['disease_status']
+            technology = samples[sample]['technology']
+            bam_name = samples[sample]['bam_name']
+            baseline_cov = samples[sample]['baseline_cov']
         
-        ### Extract Sequencing Data
-        data = gather_data(sv_type, bam_name, chrom, start, end, window, padding, collapse_ins, rep_df)  
+            ### Extract Sequencing Data
+            data = gather_data(sv_type, bam_name, chrom, start, end, window, padding, collapse_ins, rep_df)  
         
-        ### Define sample axes
-        if technology == 'ill':
-            ax_title = plt.subplot(gs[i, 0:4])
-            ax_cov_ill = plt.subplot(gs[i + 1, 0:4])
-            ax_isize_ill = plt.subplot(gs[i + 2, 0:4])
-            ax_orient_ill = plt.subplot(gs[i + 3, 0:4])
-            ax_cig_ill = plt.subplot(gs[i + 4, 0:4])
-            axs = [ax_title, ax_cov_ill, ax_isize_ill, ax_orient_ill, ax_cig_ill]
-            for ax in axs:
-                ax.grid(False)
-                ax.set_facecolor('white')
+            ### Define sample axes
+            if technology == 'ill':
+                ax_title = plt.subplot(gs[i, 0:4])
+                ax_cov_ill = plt.subplot(gs[i + 1, 0:4])
+                ax_isize_ill = plt.subplot(gs[i + 2, 0:4])
+                ax_orient_ill = plt.subplot(gs[i + 3, 0:4])
+                ax_cig_ill = plt.subplot(gs[i + 4, 0:4])
+                axs = [ax_title, ax_cov_ill, ax_isize_ill, ax_orient_ill, ax_cig_ill]
+                for ax in axs:
+                    ax.grid(False)
+                    ax.set_facecolor('white')
             
-            ### Create plots for current sample
-            if data['compute_cov']:
-                plot_cov(start, end, data, ax_cov_ill, padding, baseline_cov)
-                plot_rep(data, ax_cov_ill, rep_y_pos_map)
-                plot_isize(data, ax_isize_ill, padding)
-                plot_orient(data, ax_orient_ill, padding)
-            plot_cigar(sv_type, data, ax_cig_ill, colors, window, 'ill')
+                ### Create plots for current sample
+                if data['compute_cov']:
+                    plot_cov(start, end, data, ax_cov_ill, padding, baseline_cov)
+                    plot_rep(data, ax_cov_ill, rep_y_pos_map)
+                    plot_isize(data, ax_isize_ill, padding)
+                    plot_orient(data, ax_orient_ill, padding)
+                plot_cigar(sv_type, data, ax_cig_ill, colors, window, 'ill')
             
-            ### Update index
-            i += 5
+                ### Update index
+                i += 5
             
-        elif technology == 'pb':
-            ax_title = plt.subplot(gs[i, 0:4])
-            ax_cov_pb = plt.subplot(gs[i + 1, 0:4])
-            ax_cig_pb = plt.subplot(gs[i + 2, 0:4])
-            axs = [ax_title, ax_cov_pb, ax_cig_pb]
-            for ax in axs:
-                ax.grid(False)
-                ax.set_facecolor('white')
+            elif technology == 'pb':
+                ax_title = plt.subplot(gs[i, 0:4])
+                ax_cov_pb = plt.subplot(gs[i + 1, 0:4])
+                ax_cig_pb = plt.subplot(gs[i + 2, 0:4])
+                axs = [ax_title, ax_cov_pb, ax_cig_pb]
+                for ax in axs:
+                    ax.grid(False)
+                    ax.set_facecolor('white')
             
-            ### Create plots for current sample
-            if data['compute_cov']:
-                plot_cov(start, end, data, ax_cov_pb, padding, baseline_cov)
-                plot_rep(data, ax_cov_pb, rep_y_pos_map)
-            plot_cigar(sv_type, data, ax_cig_pb, colors, window, 'pb')
+                ### Create plots for current sample
+                if data['compute_cov']:
+                    plot_cov(start, end, data, ax_cov_pb, padding, baseline_cov)
+                    plot_rep(data, ax_cov_pb, rep_y_pos_map)
+                plot_cigar(sv_type, data, ax_cig_pb, colors, window, 'pb')
             
-            ### Update index
-            i += 3
+                ### Update index
+                i += 3
         
-        ### Set title
-        if not plotted_main_title:
-            if sv_len is None:
-                sv_len = end - start
+            ### Set title
+            if not plotted_main_title:
+                if sv_len is None:
+                    sv_len = end - start
+                try:
+                    ax_title.text(0.5, 0.5, sv_type + ' ' + chrom + ':' + add_comma_to_pos(start) + '-' + add_comma_to_pos(end) + ' (' + add_comma_to_pos(sv_len) + ' bp)', horizontalalignment='center', verticalalignment='center', fontsize=12, weight='bold')
+                except ValueError:
+                    ax_title.text(0.5, 0.5, sv_type + ' ' + chrom + ':' + add_comma_to_pos(start) + '-' + add_comma_to_pos(end) + ' (Unknown Length)', horizontalalignment='center', verticalalignment='center', fontsize=12, weight='bold')
+                plotted_main_title = True
+            ax_title.text(0.5, 0, name + ' (' + family_status.capitalize() + ', ' + disease_status.capitalize() + ')', horizontalalignment='center', verticalalignment='center', fontsize=12, weight='bold')
+            ax_title.axis('off')
+    
+        ### Save figure
+        if outfile != None:
             try:
-                ax_title.text(0.5, 0.5, sv_type + ' ' + chrom + ':' + add_comma_to_pos(start) + '-' + add_comma_to_pos(end) + ' (' + add_comma_to_pos(sv_len) + ' bp)', horizontalalignment='center', verticalalignment='center', fontsize=12, weight='bold')
-            except ValueError:
-                ax_title.text(0.5, 0.5, sv_type + ' ' + chrom + ':' + add_comma_to_pos(start) + '-' + add_comma_to_pos(end) + ' (Unknown Length)', horizontalalignment='center', verticalalignment='center', fontsize=12, weight='bold')
-            plotted_main_title = True
-        ax_title.text(0.5, 0, name + ' (' + family_status.capitalize() + ', ' + disease_status.capitalize() + ')', horizontalalignment='center', verticalalignment='center', fontsize=12, weight='bold')
-        ax_title.axis('off')
-    
-    ### Save figure
-    if outfile != None:
-        try:
-            plt.savefig(outfile, dpi=96, bbox_inches='tight')
-            plt.close()
-        except OverflowError:
-            plt.clf()
-            plt.text(0.5, 0.5, 'Plotting not possible', ha='center', va='center')
-            plt.savefig(outfile, dpi=96, bbox_inches='tight')
-            plt.close()
-    else:
-        plt.show()
+                plt.savefig(outfile, dpi=96, bbox_inches='tight')
+                plt.close()
+            except OverflowError:
+                plt.clf()
+                plt.text(0.5, 0.5, 'Plotting not possible', ha='center', va='center')
+                plt.savefig(outfile, dpi=96, bbox_inches='tight')
+                plt.close()
+        else:
+            plt.show()
         
         
 def cuban_bnd(samples: dict, rep_df: pd.DataFrame, chromA: str, startA: int, endA: int, chromB: str, startB: int, endB: int, padding: int=1500, window: int=100, collapse_ins: bool=True, outfile: str=None):
@@ -624,6 +623,8 @@ def cuban_bnd(samples: dict, rep_df: pd.DataFrame, chromA: str, startA: int, end
     num_samples = len(samples)
     num_rows = 0
     height_ratios = []
+    if not samples:
+        raise ValueError('No samples provided.')
     for sample in samples:
         technology = samples[sample]['technology']
         if technology == 'ill':
@@ -632,251 +633,114 @@ def cuban_bnd(samples: dict, rep_df: pd.DataFrame, chromA: str, startA: int, end
         elif technology == 'pb':
             num_rows += 3
             height_ratios.extend([1,3,7])
-        
-    fig = plt.figure(figsize=(25, 11 * num_samples))
-    gs = gridspec.GridSpec(num_rows, 4, height_ratios=height_ratios, hspace=0.5, wspace=0.35, figure=fig)
-    plt.rcParams['hatch.linewidth'] = 0.5
-    plt.rcParams["font.weight"] = "bold"
-    plt.rcParams["axes.labelweight"] = "bold"
-    
-    ### Set up parameters
-    i = 0
-    plotted_main_title = False
-    for sample in samples:
-        
-        ### Get sample info
-        name = sample
-        family_status = samples[sample]['family_status']
-        disease_status = samples[sample]['disease_status']
-        technology = samples[sample]['technology']
-        bam_name = samples[sample]['bam_name']
-        baseline_cov = samples[sample]['baseline_cov']
-        
-        ### Extract Sequencing Data
-        dataA = gather_data(sv_type, bam_name, chromA, startA, endA, window, padding, collapse_ins, rep_df)  
-        dataB = gather_data(sv_type, bam_name, chromB, startB, endB, window, padding, collapse_ins, rep_df)
-        
-        ### Define sample axes
-        if technology == 'ill':
-            axes_title = plt.subplot(gs[i, 0:4])
-            axes_cov_ill = [plt.subplot(gs[i + 1, 0:2]), plt.subplot(gs[i + 1, 2:4])]
-            axes_isize_ill = [plt.subplot(gs[i + 2, 0:2]), plt.subplot(gs[i + 2, 2:4])]
-            axes_orient_ill = [plt.subplot(gs[i + 3, 0:2]), plt.subplot(gs[i + 3, 2:4])]
-            axes_cig_ill = plt.subplot(gs[i + 4, 0:4])
-            axes_split = [axes_cov_ill, axes_isize_ill, axes_orient_ill]
-            axes = [axes_title, axes_cig_ill]
-            for ax in axes_split:
-                for subax in ax:
-                    subax.grid(False)
-                    subax.set_facecolor('white')
-            for ax in axes:
-                ax.grid(False)
-                ax.set_facecolor('white')
-            
-            ### Create plots for current sample, first locus
-            if dataA['compute_cov']:
-                plot_cov(startA, endA, dataA, axes_cov_ill[0], padding, baseline_cov)
-                plot_rep(dataA, axes_cov_ill[0], rep_y_pos_map)
-                plot_isize(dataA, axes_isize_ill[0], padding)
-                plot_orient(dataA, axes_orient_ill[0], padding)
-            
-            ### Create plots for current sample, second locus
-            if dataB['compute_cov']:
-                plot_cov(startB, endB, dataB, axes_cov_ill[1], padding, baseline_cov, plot_label=False)
-                plot_rep(dataB, axes_cov_ill[1], rep_y_pos_map)
-                plot_isize(dataB, axes_isize_ill[1], padding, plot_label=False)
-                plot_orient(dataB, axes_orient_ill[1], padding, plot_label=False)
-                
-            ### Plot joint alignment matrix
-            plot_cigar(sv_type, dataA, axes_cig_ill, colors, window, 'ill', dataB)
-            
-            ### Update index
-            i += 5
-            
-        elif technology == 'pb':
-            axes_title = plt.subplot(gs[i, 0:4])
-            axes_cov_pb = [plt.subplot(gs[i + 1, 0:2]), plt.subplot(gs[i + 1, 2:4])]
-            axes_cig_pb = plt.subplot(gs[i + 2, 0:4])
-            axes_split = [axes_cov_pb]
-            axes = [axes_title, axes_cig_pb]
-            for ax in axes_split:
-                for subax in ax:
-                    subax.grid(False)
-                    subax.set_facecolor('white')
-            for ax in axes:
-                ax.grid(False)
-                ax.set_facecolor('white')
-            
-            ### Create plots for current sample, first locus
-            if dataA['compute_cov']:
-                plot_cov(startA, endA, dataA, axes_cov_pb[0], padding, baseline_cov)
-                plot_rep(dataA, axes_cov_pb[0], rep_y_pos_map)
-            
-            ### Create plots for current sample, second locus
-            if dataB['compute_cov']:
-                plot_cov(startB, endB, dataB, axes_cov_pb[1], padding, baseline_cov, plot_label=False)
-                plot_rep(dataB, axes_cov_pb[1], rep_y_pos_map)
-                
-            ### Plot joint alignment matrix
-            plot_cigar(sv_type, dataA, axes_cig_pb, colors, window, 'pb', dataB)
-            
-            ### Update index
-            i += 3
-        
-        ### Set title
-        if not plotted_main_title:
-            axes_title.text(0.5, 0.5, sv_type + ' ' + chromA + ':' + add_comma_to_pos(startA) + ' <> ' + chromB + ':' + add_comma_to_pos(startB), horizontalalignment='center', verticalalignment='center', fontsize=12, weight='bold')
-            plotted_main_title = True
-        axes_title.text(0.5, 0, name + ' (' + family_status.capitalize() + ', ' + disease_status.capitalize() + ')', horizontalalignment='center', verticalalignment='center', fontsize=12, weight='bold')
-        axes_title.axis('off')
-    
-    ### Save figure
-    if outfile != None:
-        try:
-            plt.savefig(outfile, dpi=96, bbox_inches='tight')
-            plt.close()
-        except OverflowError:
-            plt.clf()
-            plt.text(0.5, 0.5, 'Plotting not possible', ha='center', va='center')
-            plt.savefig(outfile, dpi=96, bbox_inches='tight')
-            plt.close()
-    else:
-        plt.show()
-
-
-def acc_dot(aln_matrix, ax, labels, color=None):
-    """ Calculates x and y positions for dotplot. """
-
-    if len(labels) > 0:
-        # Color dict for haplotag
-        color_dict_hp = {'-1' : 'black', '1': 'blue', '2': 'red'}
-        
-
-    # Plot dotplot
-    for i in range(len(aln_matrix)):
-        x_pos = 0
-        y_pos = 0
-        all_x_pos = []
-        all_y_pos = []
-        for j in range(len(aln_matrix[i])):
-            if aln_matrix[i][j] >= 0:
-                all_x_pos.append(x_pos)
-                all_y_pos.append(y_pos)
-            if aln_matrix[i][j] <= 0:
-                x_pos += 1
-                y_pos += 1
-            elif aln_matrix[i][j] == 1:
-                y_pos += 1
-            elif aln_matrix[i][j] == 2:
-                x_pos += 1
-            elif aln_matrix[i][j] > 3:
-                x_pos += 1
-        if len(labels) > 0:
-            ax.plot(all_x_pos, all_y_pos, alpha=1/len(aln_matrix)+0.3, linewidth=3, color=color_dict_hp[labels[i]] if len(labels) > 0 else 'red')
-        
-        elif color is not None:
-            ax.plot(all_x_pos, all_y_pos, alpha=1/len(aln_matrix)+0.3, linewidth=3, color=color)
-            
         else:
-            ax.plot(all_x_pos, all_y_pos, alpha=1/len(aln_matrix)+0.3, linewidth=3, color='red')
-
-
-def plot_dotplots(bam_filename, chrom, left_bp, right_bp, padding=100, color_by='', outfile=''):
-    """ Computes alignment matrix and plots dotplot. """
-    bam = pysam.AlignmentFile(bam_filename, 'rb')
-    
-    # Compute alignment matrix
-    size = right_bp - left_bp + padding * 2
-    aln_matrix, aux_dict = compute_aln_matrix(bam, chrom, left_bp-padding, right_bp+padding, collapse_ins=False, size=size)
-
-    # Plot dotplot
-    fig, ax = plt.subplots(1, 1, figsize=(20,10))
-    fig.patch.set_facecolor('white')
-
-    # Coloring options
-    if color_by == 'HP':
-        labels = [str(x) for x in aux_dict['haplotag_idx']]
-    else:
-        labels = []
-
-    acc_dot(aln_matrix, ax, labels)
-    ax.vlines(x=padding, ymin=-1, ymax=size, color='black', linewidth=1, alpha=0.5, linestyles='dashed')
-    ax.vlines(x=size-padding, ymin=-1, ymax=size, color='black', linewidth=1, alpha=0.5, linestyles='dashed')
-
-    ax.set_ylim(-1, len(aln_matrix[0]))
-    ax.set_xlim(-1, len(aln_matrix[0]))
-    ax.set_ylabel('Alignment Position')
-    ax.set_xlabel('Reference Position')
-    plt.title(chrom + ':' + str(left_bp) + '-' + str(right_bp))
-    if outfile == '':
-        plt.show()
-    else:
-        plt.savefig(outfile)
+            raise ValueError(f"Sample '{sample}' has invalid technology '{technology}': technology must be 'ill' or 'pb'")
         
+    with plt.style.context('ggplot'), mpl.rc_context(rc_params):
+        fig = plt.figure(figsize=(25, 11 * num_samples))
+        gs = gridspec.GridSpec(num_rows, 4, height_ratios=height_ratios, hspace=0.5, wspace=0.35, figure=fig)
+    
+        ### Set up parameters
+        i = 0
+        plotted_main_title = False
+        for sample in samples:
         
-def plot_dotplot_multi_sample(bam_filename_1, bam_filename_2, sample1, sample2, chrom, left_bp, right_bp, padding=100, outfile=''):
-    
-    bam1 = pysam.AlignmentFile(bam_filename_1, 'rb')
-    bam2 = pysam.AlignmentFile(bam_filename_2, 'rb')
-    
-    plt.rcParams['font.size'] = 18  # Adjusts the base/default font size
-    plt.rcParams['axes.labelsize'] = 18  # For x and y labels
-    plt.rcParams['axes.titlesize'] = 18  # For the title
-    plt.rcParams['legend.fontsize'] = 26  # For legend
-    
-    # Compute alignment matrix
-    size = right_bp - left_bp + padding * 2
-    aln_matrix1, aux_dict1 = compute_aln_matrix(bam1, chrom, left_bp-padding, right_bp+padding, collapse_ins=False, size=size)
-    aln_matrix2, aux_dict2 = compute_aln_matrix(bam2, chrom, left_bp-padding, right_bp+padding, collapse_ins=False, size=size)
-    
-    # Plot dotplot
-    fig, axs = plt.subplots(1, 1, figsize=(12,12))
-    #fig.patch.set_facecolor('white')
-    
-    # make background white
-    #axs.set_facecolor('white')
-    
-    acc_dot(aln_matrix1, axs, [], color='blue')
-    acc_dot(aln_matrix2, axs, [], color='red')
-    axs.vlines(x=padding, ymin=-1, ymax=size, color='black', linewidth=3, alpha=0.5, linestyles='dashed')
-    axs.vlines(x=size-padding, ymin=-1, ymax=size, color='black', linewidth=3, alpha=0.5, linestyles='dashed')
-    
-    axs.set_ylim(-1, len(aln_matrix1[0]))
-    axs.set_xlim(-1, len(aln_matrix1[0]))
-    axs.set_ylabel('Alignment Position')
-    axs.set_xlabel('Reference Position')
-    plt.title(chrom + ':' + str(left_bp) + '-' + str(right_bp))
-    
-    # Add legend
-    blue_line = mlines.Line2D([], [], color='blue', markersize=20, label=sample1)
-    red_line = mlines.Line2D([], [], color='red', markersize=20, label=sample2)
-    axs.legend(handles=[blue_line, red_line], fontsize=20)  # Increase font size here
-    
-    # make legend background white
-    axs.get_legend().get_frame().set_facecolor('white') 
-    
-    # remove legend border
-    axs.get_legend().get_frame().set_linewidth(0.0)
-    
-    # make legend lines thicker
-    for line in axs.get_legend().get_lines():
-        line.set_linewidth(3)
+            ### Get sample info
+            name = sample
+            family_status = samples[sample]['family_status']
+            disease_status = samples[sample]['disease_status']
+            technology = samples[sample]['technology']
+            bam_name = samples[sample]['bam_name']
+            baseline_cov = samples[sample]['baseline_cov']
         
-    # make x and y axis visible
-    axs.spines['top'].set_visible(True)
-    axs.spines['right'].set_visible(True)
-    axs.spines['bottom'].set_visible(True)
-    axs.spines['left'].set_visible(True)
+            ### Extract Sequencing Data
+            dataA = gather_data(sv_type, bam_name, chromA, startA, endA, window, padding, collapse_ins, rep_df)  
+            dataB = gather_data(sv_type, bam_name, chromB, startB, endB, window, padding, collapse_ins, rep_df)
+        
+            ### Define sample axes
+            if technology == 'ill':
+                axes_title = plt.subplot(gs[i, 0:4])
+                axes_cov_ill = [plt.subplot(gs[i + 1, 0:2]), plt.subplot(gs[i + 1, 2:4])]
+                axes_isize_ill = [plt.subplot(gs[i + 2, 0:2]), plt.subplot(gs[i + 2, 2:4])]
+                axes_orient_ill = [plt.subplot(gs[i + 3, 0:2]), plt.subplot(gs[i + 3, 2:4])]
+                axes_cig_ill = plt.subplot(gs[i + 4, 0:4])
+                axes_split = [axes_cov_ill, axes_isize_ill, axes_orient_ill]
+                axes = [axes_title, axes_cig_ill]
+                for ax in axes_split:
+                    for subax in ax:
+                        subax.grid(False)
+                        subax.set_facecolor('white')
+                for ax in axes:
+                    ax.grid(False)
+                    ax.set_facecolor('white')
+            
+                ### Create plots for current sample, first locus
+                if dataA['compute_cov']:
+                    plot_cov(startA, endA, dataA, axes_cov_ill[0], padding, baseline_cov)
+                    plot_rep(dataA, axes_cov_ill[0], rep_y_pos_map)
+                    plot_isize(dataA, axes_isize_ill[0], padding)
+                    plot_orient(dataA, axes_orient_ill[0], padding)
+            
+                ### Create plots for current sample, second locus
+                if dataB['compute_cov']:
+                    plot_cov(startB, endB, dataB, axes_cov_ill[1], padding, baseline_cov, plot_label=False)
+                    plot_rep(dataB, axes_cov_ill[1], rep_y_pos_map)
+                    plot_isize(dataB, axes_isize_ill[1], padding, plot_label=False)
+                    plot_orient(dataB, axes_orient_ill[1], padding, plot_label=False)
+                
+                ### Plot joint alignment matrix
+                plot_cigar(sv_type, dataA, axes_cig_ill, colors, window, 'ill', dataB)
+            
+                ### Update index
+                i += 5
+            
+            elif technology == 'pb':
+                axes_title = plt.subplot(gs[i, 0:4])
+                axes_cov_pb = [plt.subplot(gs[i + 1, 0:2]), plt.subplot(gs[i + 1, 2:4])]
+                axes_cig_pb = plt.subplot(gs[i + 2, 0:4])
+                axes_split = [axes_cov_pb]
+                axes = [axes_title, axes_cig_pb]
+                for ax in axes_split:
+                    for subax in ax:
+                        subax.grid(False)
+                        subax.set_facecolor('white')
+                for ax in axes:
+                    ax.grid(False)
+                    ax.set_facecolor('white')
+            
+                ### Create plots for current sample, first locus
+                if dataA['compute_cov']:
+                    plot_cov(startA, endA, dataA, axes_cov_pb[0], padding, baseline_cov)
+                    plot_rep(dataA, axes_cov_pb[0], rep_y_pos_map)
+            
+                ### Create plots for current sample, second locus
+                if dataB['compute_cov']:
+                    plot_cov(startB, endB, dataB, axes_cov_pb[1], padding, baseline_cov, plot_label=False)
+                    plot_rep(dataB, axes_cov_pb[1], rep_y_pos_map)
+                
+                ### Plot joint alignment matrix
+                plot_cigar(sv_type, dataA, axes_cig_pb, colors, window, 'pb', dataB)
+            
+                ### Update index
+                i += 3
+        
+            ### Set title
+            if not plotted_main_title:
+                axes_title.text(0.5, 0.5, sv_type + ' ' + chromA + ':' + add_comma_to_pos(startA) + ' <> ' + chromB + ':' + add_comma_to_pos(startB), horizontalalignment='center', verticalalignment='center', fontsize=12, weight='bold')
+                plotted_main_title = True
+            axes_title.text(0.5, 0, name + ' (' + family_status.capitalize() + ', ' + disease_status.capitalize() + ')', horizontalalignment='center', verticalalignment='center', fontsize=12, weight='bold')
+            axes_title.axis('off')
     
-    # make x and y axis black
-    axs.spines['top'].set_color('black')
-    axs.spines['right'].set_color('black')
-    axs.spines['bottom'].set_color('black')
-    axs.spines['left'].set_color('black')
-    
-    
-    
-    if outfile == '':
-        plt.show()
-    else:
-        plt.savefig(outfile)
+        ### Save figure
+        if outfile != None:
+            try:
+                plt.savefig(outfile, dpi=96, bbox_inches='tight')
+                plt.close()
+            except OverflowError:
+                plt.clf()
+                plt.text(0.5, 0.5, 'Plotting not possible', ha='center', va='center')
+                plt.savefig(outfile, dpi=96, bbox_inches='tight')
+                plt.close()
+        else:
+            plt.show()
+

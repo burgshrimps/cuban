@@ -1,4 +1,6 @@
 #!/usr/bin/env python3
+"""cuban: render structural-variant read-support plots (coverage, CIGAR,
+insert size, orientation) from BAMs around a breakpoint or breakpoint pair."""
 
 import argparse
 import json
@@ -84,9 +86,11 @@ def _build_parser():
     )
 
     parser.add_argument('--sv-type', choices=SV_TYPES,
-                        help='SV type (omit when --bnd is set; defaults to BND).')
+                        help='SV type. BND requires --chrom-b/--start-b/--end-b '
+                             '(or pass --bnd instead, which implies BND).')
     parser.add_argument('--bnd', action='store_true',
-                        help='render two independent loci side by side (BND mode).')
+                        help='render two independent loci side by side (BND mode). '
+                             'Implies --sv-type BND; conflicts with any other --sv-type.')
     parser.add_argument('--chrom', required=True, help='chromosome of the SV (or first locus for --bnd).')
     parser.add_argument('--start', type=int, required=True, help='start position (1-based).')
     parser.add_argument('--end', type=int, required=True, help='end position (1-based, inclusive).')
@@ -98,7 +102,8 @@ def _build_parser():
                         help='RepeatMasker TSV (chrom/start/end/repclass columns). '
                              'Defaults to the bundled resources/hg38_repeatmasker.tsv.')
     parser.add_argument('--sample', action='append', required=True,
-                        help='sample spec (repeatable): name:tech:bam[:baseline_cov[:family[:disease]]]')
+                        help='sample spec (repeatable): name:tech:bam[:baseline_cov[:family[:disease]]]. '
+                             'Fields are colon-separated, so the bam path must not contain a colon.')
 
     parser.add_argument('-o', '--out', required=True, help='output PNG path.')
     parser.add_argument('--padding', type=int, default=1500,
@@ -117,13 +122,20 @@ def main(argv=None):
     args = _build_parser().parse_args(argv)
 
     if args.bnd:
-        if args.chrom_b is None or args.start_b is None or args.end_b is None:
-            raise SystemExit('--bnd requires --chrom-b, --start-b, and --end-b.')
+        if args.sv_type not in (None, 'BND'):
+            raise SystemExit(f'--bnd conflicts with --sv-type {args.sv_type} (--bnd implies BND).')
         sv_type = 'BND'
     else:
         if args.sv_type is None:
             raise SystemExit('--sv-type is required (or pass --bnd for translocations).')
         sv_type = args.sv_type
+
+    if sv_type == 'BND':
+        missing = [flag for flag, val in (
+            ('--chrom-b', args.chrom_b), ('--start-b', args.start_b), ('--end-b', args.end_b),
+        ) if val is None]
+        if missing:
+            raise SystemExit(f"--sv-type BND requires {', '.join(missing)}.")
 
     if not os.path.isfile(args.repeats):
         raise SystemExit(f'repeats TSV not found: {args.repeats}')
@@ -140,7 +152,7 @@ def main(argv=None):
     if out_dir:
         os.makedirs(out_dir, exist_ok=True)
 
-    if args.bnd:
+    if sv_type == 'BND':
         cuban_bnd(
             samples=samples,
             rep_df=rep_df,

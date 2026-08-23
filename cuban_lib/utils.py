@@ -1,11 +1,8 @@
+import warnings
+
 import numpy as np
 import pandas as pd
 import pysam
-
-
-def compute_overlap(s1, s2, e1, e2):
-    """ Computes overlap between two segments. """
-    return max(0, min(e1, e2) - max(s1, s2))
 
 
 def cigartuples_to_array(cigartuples):
@@ -20,8 +17,8 @@ def compute_aln_matrix(bam, chrom, start, stop, collapse_ins=True):
     """ Computes alignment matrix consisting of CIGAR integers for a given region. """
     size = stop - start
     reads = []
-    for read in bam.fetch(chrom, max(1, start), stop):
-        if not read.is_unmapped:
+    for read in bam.fetch(chrom, max(0, start), stop):
+        if not read.is_unmapped and not read.is_duplicate and not read.is_qcfail:
             reads.append(read)
 
     aln_matrix = -1 * np.ones((len(reads), size))
@@ -35,107 +32,103 @@ def compute_aln_matrix(bam, chrom, start, stop, collapse_ins=True):
                 'discordant_idx_tx': []}
 
     for idx, read in enumerate(reads):
-        
-        if not read.is_unmapped and not read.is_duplicate and not read.is_qcfail: 
-        
-            aux_dict['name'].append(read.query_name)
-            if read.has_tag('SA'):
-                aux_dict['split_idx'].append(idx)
-            if read.mapping_quality < 30:
-                aux_dict['low_mapq_idx'].append(idx)
-            if read.has_tag('HP'):
-                aux_dict['haplotag_idx'].append(read.get_tag('HP'))
-            else:
-                aux_dict['haplotag_idx'].append(-1)
-                
-            if not read.mate_is_unmapped:
-                if read.reference_id != read.next_reference_id:
-                    aux_dict['discordant_idx_tx'].append(idx)
-                
-                elif read.is_reverse and read.mate_is_reverse:
-                    aux_dict['discordant_idx_rr'].append(idx)
-                    
-                elif not read.is_reverse and not read.mate_is_reverse:
-                    aux_dict['discordant_idx_ff'].append(idx)
-                    
-                elif not read.is_reverse and read.mate_is_reverse and read.template_length < 0:
-                    aux_dict['discordant_idx_rf'].append(idx)
-                            
-                elif read.is_reverse and not read.mate_is_reverse and read.template_length > 0:
-                    aux_dict['discordant_idx_rf'].append(idx)
-                
-            cigararray = cigartuples_to_array(read.cigartuples)
 
-            if read.cigartuples[0][0] == 4 or read.cigartuples[0][0] == 5:
-                read_start = read.reference_start - read.cigartuples[0][1]
-            else:
-                read_start = read.reference_start
-            if read.cigartuples[-1][0] == 4 or read.cigartuples[-1][0] == 5:
-                read_end = read.reference_end + read.cigartuples[-1][1]
-            else:
-                read_end = read.reference_end
+        aux_dict['name'].append(read.query_name)
+        if read.has_tag('SA'):
+            aux_dict['split_idx'].append(idx)
+        if read.mapping_quality < 30:
+            aux_dict['low_mapq_idx'].append(idx)
+        if read.has_tag('HP'):
+            aux_dict['haplotag_idx'].append(read.get_tag('HP'))
+        else:
+            aux_dict['haplotag_idx'].append(-1)
 
-            # Identify INS in CIGARARRAY and remove them for alignment visualisation
+        if not read.mate_is_unmapped:
+            if read.reference_id != read.next_reference_id:
+                aux_dict['discordant_idx_tx'].append(idx)
+
+            elif read.is_reverse and read.mate_is_reverse:
+                aux_dict['discordant_idx_rr'].append(idx)
+
+            elif not read.is_reverse and not read.mate_is_reverse:
+                aux_dict['discordant_idx_ff'].append(idx)
+
+            elif not read.is_reverse and read.mate_is_reverse and read.template_length < 0:
+                aux_dict['discordant_idx_rf'].append(idx)
+
+            elif read.is_reverse and not read.mate_is_reverse and read.template_length > 0:
+                aux_dict['discordant_idx_rf'].append(idx)
+
+        cigararray = cigartuples_to_array(read.cigartuples)
+
+        if read.cigartuples[0][0] == 4 or read.cigartuples[0][0] == 5:
+            read_start = read.reference_start - read.cigartuples[0][1]
+        else:
+            read_start = read.reference_start
+        if read.cigartuples[-1][0] == 4 or read.cigartuples[-1][0] == 5:
+            read_end = read.reference_end + read.cigartuples[-1][1]
+        else:
+            read_end = read.reference_end
+
+        # Identify INS in CIGARARRAY and remove them for alignment visualisation
+        if collapse_ins:
+            ins_idx = np.argwhere(cigararray == 1).flatten() # Find positions of INS (1) in CIGARARRAY
+            diff = np.diff(ins_idx) # Compute difference between consecutive INS positions
+            idx_runs = np.argwhere(diff == 1).flatten() # Find positions of consecutive INS positions
+            mask = np.ones(len(cigararray), bool)
+            mask[ins_idx[idx_runs]] = 0 # Deselect consecutive INS positions exept the first one
+            if len(ins_idx) > 0:
+                mask[ins_idx[ins_idx > 0] - 1] = 0 # Deselect the position before the first INS position to avoid shifting of cigararray
+            cigararray = cigararray[mask] # Remove consecutive INS positions from CIGARARRAY
+
+        if read_start < start and read_end > stop:
+            # Read completely covers region
             if collapse_ins:
-                ins_idx = np.argwhere(cigararray == 1).flatten() # Find positions of INS (1) in CIGARARRAY
-                diff = np.diff(ins_idx) # Compute difference between consecutive INS positions
-                idx_runs = np.argwhere(diff == 1).flatten() # Find positions of consecutive INS positions
-                mask = np.ones(len(cigararray), bool)
-                mask[ins_idx[idx_runs]] = 0 # Deselect consecutive INS positions exept the first one
-                mask[ins_idx - 1] = 0 # Deselect the position before the first INS position to avoid shifting of cigararray
-                cigararray = cigararray[mask] # Remove consecutive INS positions from CIGARARRAY
-            
-            if read_start < start and read_end > stop:
-                # Read completely covers region
-                if collapse_ins:
-                    start_idx_read = start - read_start
-                else:
-                    start_idx_read = np.argwhere(cigararray != 1).flatten()[start - read_start] # shift start by number of INS
-                start_idx_aln = 0
+                start_idx_read = start - read_start
+            else:
+                start_idx_read = np.argwhere(cigararray != 1).flatten()[start - read_start] # shift start by number of INS
+            start_idx_aln = 0
+            end_idx_read = start_idx_read + size
+            end_idx_aln = size
+
+        elif read_start < start and read_end <= stop:
+            # Read is partially contained in region
+            if collapse_ins:
+                start_idx_read = start - read_start
+            else:
+                start_idx_read = np.argwhere(cigararray != 1).flatten()[start - read_start]
+            start_idx_aln = 0
+            if len(cigararray[start_idx_read:]) < size:
+                end_idx_read = len(cigararray)
+                end_idx_aln = end_idx_read - start_idx_read
+            else:
                 end_idx_read = start_idx_read + size
                 end_idx_aln = size
-            
-            elif read_start < start and read_end <= stop:
-                # Read is partially contained in region
-                if collapse_ins:
-                    start_idx_read = start - read_start
-                else:
-                    start_idx_read = np.argwhere(cigararray != 1).flatten()[start - read_start]
-                start_idx_aln = 0
-                if len(cigararray[start_idx_read:]) < size:
-                    end_idx_read = len(cigararray)
-                    end_idx_aln = end_idx_read - start_idx_read
-                else:
-                    end_idx_read = start_idx_read + size
-                    end_idx_aln = size
 
-            elif read_start > start and read_end > stop:
-                # Read is partially contained in region
-                start_idx_read = 0
-                start_idx_aln = read_start - start 
-                end_idx_read = start_idx_read + size - (read_start - start) 
+        elif read_start > start and read_end > stop:
+            # Read is partially contained in region
+            start_idx_read = 0
+            start_idx_aln = read_start - start
+            end_idx_read = start_idx_read + size - (read_start - start)
+            end_idx_aln = size
+
+        else:
+            # Read is fully contained in region
+            start_idx_read = 0
+            start_idx_aln = read_start - start
+            if len(cigararray) < size:
+                end_idx_read = len(cigararray)
+                end_idx_aln = start_idx_aln + len(cigararray)
+            else:
+                end_idx_read = start_idx_read + size - (read_start - start)
                 end_idx_aln = size
 
-            else:
-                # Read is fully contained in region
-                start_idx_read = 0
-                start_idx_aln = read_start - start
-                if len(cigararray) < size:
-                    end_idx_read = len(cigararray)
-                    end_idx_aln = start_idx_aln + len(cigararray)
-                else:
-                    end_idx_read = start_idx_read + size - (read_start - start) 
-                    end_idx_aln = size
-                if start_idx_aln < 0:
-                    print(start_idx_aln)
-                
-            if end_idx_aln > 0 and end_idx_read > 0:
-                try:
-                    aln_matrix[idx, start_idx_aln:end_idx_aln] = cigararray[start_idx_read:end_idx_read]
-                except: 
-                    pass
-                    #print(idx, read.query_name, start_idx_aln, end_idx_aln, start_idx_read, end_idx_read, read_start, read_end, start, stop, size, len(cigararray),  np.sum(cigararray == 1))
-    
+        if end_idx_aln > 0 and end_idx_read > 0:
+            try:
+                aln_matrix[idx, start_idx_aln:end_idx_aln] = cigararray[start_idx_read:end_idx_read]
+            except (ValueError, IndexError):
+                warnings.warn(f"Skipping read {read.query_name}: alignment matrix assignment failed")
+
     return aln_matrix, aux_dict
 
 
@@ -153,6 +146,8 @@ def compute_cov_df(bam_filename, chrom, start, stop, minq=30):
     mapping quality >= minq. """
     cov = pd.DataFrame([x.split('\t') for x in pysam.depth(bam_filename, '-r', chrom + ':' + str(start) + '-' + str(stop), '-a').split('\n')[:-1]])
     cov_minq = pd.DataFrame([x.split('\t') for x in pysam.depth(bam_filename, '-r', chrom + ':' + str(start) + '-' + str(stop), '-a', '-Q', str(minq)).split('\n')[:-1]])
+    if cov.empty or cov_minq.empty:
+        raise ValueError(f"No coverage data returned for {chrom} from BAM file '{bam_filename}'. Make sure the BAM file is indexed and that '{chrom}' exists in its header.")
     cov[1] = cov[1].astype(int)
     cov[2] = cov[2].astype(int)
     cov[1] = cov[1] - cov.loc[0, 1]
@@ -171,23 +166,6 @@ def compute_rep_df(rep_df, chrom, start, stop, padding=500):
     rep_df = rep_df[(rep_df['genoEnd'] > 0) & (rep_df['genoStart'] < stop - start + (2*padding))]
     rep_df.reset_index(drop=True, inplace=True)
     return rep_df
-
-def get_variant_neighbourhood(df, chrom, start, stop, padding=500):
-    """ Computes overlap with other SVs in the same region as the given SV. """
-    
-    df = df[(df['chrom'] == chrom) & (df['start'] >= start - padding) & (df['end'] <= stop + padding)].copy()
-    df['start'] = df['start'] - start + padding
-    df['end'] = df['end'] - start + padding
-    df = df[(df['end'] > 0) & (df['start'] < stop - start + (2*padding))]
-    df.reset_index(drop=True, inplace=True)
-    return df
-
-def get_read_by_name(bam, chrom, start, stop, read_name):
-    """ Returns read with given name. """
-    for read in bam.fetch(chrom, start-5, stop+5):
-        if read.query_name == read_name:
-            return read
-    return None
 
 def add_comma_to_pos(pos):
     """ Adds comma to position. """
@@ -230,10 +208,18 @@ def compute_baseline_cov(bam_filename: str, chrom: str, n: int=1000, s: int=1000
         chrom_idx = 24
     else:
         chrom_idx = int(chrom[3:]) - 1
-        
+
+    if len(bam.lengths) > 1:
+        if chrom_idx < 0 or chrom_idx >= len(bam.lengths):
+            raise ValueError(f"Chromosome '{chrom}' not found in BAM file '{bam_filename}' header (index {chrom_idx} out of range for {len(bam.lengths)} contigs).")
+        chrom_len = bam.lengths[chrom_idx]
+    else:
+        chrom_len = bam.lengths[0]
+
+    rng = np.random.RandomState(42)
     baseline_coverage_mean = []
     for i in range(n):
-        start = np.random.randint(0, bam.lengths[chrom_idx])
+        start = rng.randint(0, chrom_len)
         stop = start + s
         
         coverage = [0] * (stop - start + 1)
