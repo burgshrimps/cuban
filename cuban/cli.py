@@ -6,8 +6,7 @@ import json
 import os
 from pathlib import Path
 
-import pandas as pd
-
+from .repeats import empty_repeats, load_repeats
 from .visualize import cuban, cuban_bnd
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
@@ -19,7 +18,6 @@ BASELINE_COV_FILES = {
     'ill': REPO_ROOT / 'resources' / 'baseline_cov_ill.json',
     'pb':  REPO_ROOT / 'resources' / 'baseline_cov_pb.json',
 }
-DEFAULT_REPEATS_TSV = REPO_ROOT / 'resources' / 'hg38_repeatmasker.tsv'
 
 
 def _parse_sample_spec(spec, chrom):
@@ -99,9 +97,13 @@ def _build_parser():
     parser.add_argument('--start-b', type=int, help='start position of the second locus (--bnd only).')
     parser.add_argument('--end-b', type=int, help='end position of the second locus (--bnd only).')
 
-    parser.add_argument('--repeats', default=str(DEFAULT_REPEATS_TSV),
-                        help='RepeatMasker TSV (chrom/start/end/repclass columns). '
-                             'Defaults to the bundled resources/hg38_repeatmasker.tsv.')
+    parser.add_argument('--repeats',
+                        help='RepeatMasker TSV[.gz] with UCSC rmsk columns '
+                             '(genoName/genoStart/genoEnd/repClass). Defaults to the '
+                             'file downloaded by cuban-fetch-repeats; if none is '
+                             'found, the repeat track is left empty.')
+    parser.add_argument('--no-repeats', action='store_true',
+                        help='render the repeat track empty without warning.')
     parser.add_argument('--sample', action='append', required=True,
                         help='sample spec (repeatable): name:tech:bam[:baseline_cov[:family[:disease]]]. '
                              'Fields are colon-separated, so the bam path must not contain a colon.')
@@ -138,9 +140,10 @@ def main(argv=None):
         if missing:
             raise SystemExit(f"--sv-type BND requires {', '.join(missing)}.")
 
-    if not os.path.isfile(args.repeats):
-        raise SystemExit(f'repeats TSV not found: {args.repeats}')
-    rep_df = pd.read_csv(args.repeats, sep='\t')
+    if args.no_repeats:
+        rep_df = empty_repeats()
+    else:
+        rep_df = load_repeats(args.repeats)
 
     samples = {}
     for spec in args.sample:

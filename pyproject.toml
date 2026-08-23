@@ -32,6 +32,7 @@ Homepage = "https://github.com/burgshrimps/cuban"
 
 [project.scripts]
 cuban = "cuban.cli:main"
+cuban-fetch-repeats = "cuban.repeats:fetch_main"
 
 [tool.setuptools]
 packages = ["cuban"]
