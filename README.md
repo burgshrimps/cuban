@@ -149,12 +149,12 @@ next to each panel.
   <tr>
     <td align="center"><img src="docs/img/read-normal.png" width="230"><br>normally aligned read</td>
     <td align="center"><img src="docs/img/read-low-mapq.png" width="230"><br>low mapping quality (&lt; 30)</td>
-    <td align="center"><img src="docs/img/read-deletion.png" width="230"><br>deleted segment (blue)</td>
+    <td align="center"><img src="docs/img/read-deletion.png" width="230"><br>deleted segment</td>
   </tr>
   <tr>
-    <td align="center"><img src="docs/img/read-insertion.png" width="230"><br>inserted segment (tan)</td>
-    <td align="center"><img src="docs/img/read-soft-clipped.png" width="230"><br>soft-clipped read (teal)</td>
-    <td align="center"><img src="docs/img/read-hard-clipped.png" width="230"><br>hard-clipped read (red)</td>
+    <td align="center"><img src="docs/img/read-insertion.png" width="230"><br>inserted segment</td>
+    <td align="center"><img src="docs/img/read-soft-clipped.png" width="230"><br>soft-clipped read</td>
+    <td align="center"><img src="docs/img/read-hard-clipped.png" width="230"><br>hard-clipped read</td>
   </tr>
 </table>
 
@@ -163,13 +163,13 @@ read-pair orientation:
 
 <table>
   <tr>
-    <td colspan="2" align="center"><img src="docs/img/read-split-a.png" width="230"><br>split read (black grid)</td>
-    <td colspan="2" align="center"><img src="docs/img/overlay-reverse-forward.png" width="230"><br>reverse-forward pair (dark blue)</td>
-    <td colspan="2" align="center"><img src="docs/img/overlay-reverse-reverse.png" width="230"><br>reverse-reverse pair (orange)</td>
+    <td colspan="2" align="center"><img src="docs/img/read-split-a.png" width="230"><br>split read</td>
+    <td colspan="2" align="center"><img src="docs/img/overlay-reverse-forward.png" width="230"><br>reverse-forward pair</td>
+    <td colspan="2" align="center"><img src="docs/img/overlay-reverse-reverse.png" width="230"><br>reverse-reverse pair</td>
   </tr>
   <tr>
     <td colspan="2"></td>
-    <td colspan="2" align="center"><img src="docs/img/overlay-forward-forward.png" width="230"><br>forward-forward pair (cadet blue)</td>
+    <td colspan="2" align="center"><img src="docs/img/overlay-forward-forward.png" width="230"><br>forward-forward pair</td>
     <td colspan="2"></td>
   </tr>
 </table>
