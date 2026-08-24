@@ -59,6 +59,18 @@ cuban --vcf examples/data/example.vcf --outdir examples/output \
       --repeats examples/data/repeats.tsv
 ```
 
+**Multi sample mode**: repeat `--sample` to stack several samples (e.g. a
+trio) into one figure, one block per sample. This works in both single
+variant and VCF mode:
+
+```bash
+cuban --sv-type DEL --chrom chr1 --start 1234500 --end 1239800 \
+      --sample proband:proband.bam \
+      --sample mother:mother.bam \
+      --sample father:father.bam \
+      --out trio.png
+```
+
 On first use cuban downloads the RepeatMasker table (~40 MB, one time) to
 `~/.cuban/` and reuses it from then on.
 
