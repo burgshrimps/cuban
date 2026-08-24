@@ -36,12 +36,6 @@ coverage, otherwise cuban falls back to a slower built-in method):
 pip install git+https://github.com/burgshrimps/cuban.git
 ```
 
-Verify the install:
-
-```bash
-cuban --version
-```
-
 ## Quickstart
 
 The repo ships a small synthetic example (a homozygous 5 kb deletion):
