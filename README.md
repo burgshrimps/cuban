@@ -36,9 +36,11 @@ coverage, otherwise cuban falls back to a slower built-in method):
 pip install git+https://github.com/burgshrimps/cuban.git
 ```
 
-## Quickstart
+## Usage
 
-The repo ships a small synthetic example (a homozygous 5 kb deletion):
+The commands below use the small synthetic example that ships with the repo
+(a homozygous 5 kb deletion). **Single variant mode** renders one SV from
+explicit coordinates:
 
 ```bash
 cuban --sv-type DEL --chrom chr1 --start 20000 --end 25000 \
@@ -47,8 +49,9 @@ cuban --sv-type DEL --chrom chr1 --start 20000 --end 25000 \
       --out examples/output/example.png
 ```
 
-Or render every record of a VCF in one go (one PNG per record, named
-`<ID>.png`; already-rendered variants are skipped, so a batch can resume):
+**Multi variant mode** renders every record of an SV VCF, one PNG per
+record named `<ID>.png`; already-rendered variants are skipped, so a batch
+can resume:
 
 ```bash
 cuban --vcf examples/data/example.vcf --outdir examples/output \
@@ -59,60 +62,30 @@ cuban --vcf examples/data/example.vcf --outdir examples/output \
 On first use cuban downloads the RepeatMasker table (~40 MB, one time) to
 `~/.cuban/` and reuses it from then on.
 
-## Usage
+### Command line options
 
-### Samples
-
-Each `--sample` is a colon-separated spec (so paths must not contain `:`):
-
-```
-name:bam
-```
-
-- The sequencing technology (short-read vs long-read) is inferred from the
-  read lengths in the BAM; long-read samples omit the insert-size and
-  orientation tracks. To set it explicitly, pass `--tech SAMPLE:sr` or
-  `--tech SAMPLE:lr` (repeatable, one per sample).
-- The baseline coverage (the horizontal reference line) is the chromosome's
-  mean depth, taken from the sample's own BAM via mosdepth. To override it,
-  pass `--baseline-cov SAMPLE:COV`, e.g. `--baseline-cov proband:32.5`
-  (repeatable, one per sample).
-
-BAMs must be indexed (`samtools index sample.bam`). Repeat `--sample` for
-a trio or family, each sample becomes one figure block:
-
-```bash
-cuban --sv-type DEL --chrom chr1 --start 1234500 --end 1239800 \
-      --sample proband:proband.bam \
-      --sample mother:mother.bam \
-      --sample father:father.bam \
-      --out trio.png
-```
-
-### Breakpoint junctions (BND)
-
-Translocations render as two independent loci side by side:
-
-```bash
-cuban --bnd --chrom chr1 --start 20000 --end 20001 \
-      --chrom-b chr5 --start-b 90000 --end-b 90001 \
-      --sample proband:sample.bam --out bnd.png
-```
-
-In VCF mode, BND records are handled automatically (all four breakend
-bracket notations).
-
-### Useful options
-
-Run `cuban --help` for everything; the ones you'll actually reach for:
-
-- `--padding`: context around the SV; defaults to an adaptive
-  `max(1500, size/10)` bp.
-- `--window`: read-panel window around each breakpoint (default 100 bp).
-- `--max-reads`: cap reads per panel on deep data (default 5000, seeded).
-- `--bin-size`: coverage bin width; automatic above 100 kb.
-- `--cache-dir`: where mosdepth output is cached (default
-  `~/.cuban/coverage`).
+| Flag | Default | Explanation |
+|---|---|---|
+| `--sample NAME:BAM` | required, repeatable | Sample to render; each sample becomes one figure block. The BAM must be indexed (`samtools index`) and its path must not contain `:`. The sequencing technology (short-read vs long-read) is inferred from the read lengths. |
+| `--tech SAMPLE:TECH` | inferred | Set the technology explicitly: `sr` (short-read) or `lr` (long-read). Long-read samples omit the insert-size and orientation tracks. Repeatable, one per sample. |
+| `--baseline-cov SAMPLE:COV` | chromosome mean of the BAM (via mosdepth) | Override the baseline coverage drawn as the horizontal reference line, e.g. `proband:32.5`. Repeatable, one per sample. |
+| `--sv-type TYPE` | required (single variant mode) | One of `DEL`, `DUP`, `INS`, `INV`, `BND`. |
+| `--chrom` / `--start` / `--end` | required (single variant mode) | SV coordinates (1-based, inclusive). |
+| `--bnd` | off | Render two independent loci side by side (implies `--sv-type BND`). |
+| `--chrom-b` / `--start-b` / `--end-b` | required for BND | Coordinates of the second locus. |
+| `-o` / `--out` | required (single variant mode) | Output PNG path. |
+| `--vcf` | - | VCF/BCF of SVs for multi variant mode (BND breakends are parsed automatically). Requires `--outdir`. |
+| `--outdir` | required with `--vcf` | Output directory for multi variant mode. |
+| `--repeats` | auto-downloaded hg38 table | RepeatMasker TSV[.gz] with UCSC rmsk columns (genoName/genoStart/genoEnd/repClass). Build one for another genome with [scripts/build_repeats.py](scripts/build_repeats.py). |
+| `--no-repeats` | off | Leave the repeat track empty. |
+| `--padding` | `max(1500, size/10)` bp | Context drawn around the SV. |
+| `--window` | 100 bp | Read-panel window around each breakpoint. |
+| `--max-reads` | 5000 | Cap on reads per read panel (seeded downsampling on deep data). |
+| `--bin-size` | auto: 1 up to 100 kb, then ~size/2000 | Coverage bin width for large SVs. |
+| `--cache-dir` | `~/.cuban/coverage` | Where mosdepth output is cached and reused across renders of the same BAM. |
+| `--no-collapse-ins` | off | Do not collapse insertion runs into a single column. |
+| `--sv-len` | from coordinates | Explicit SV length shown in the title. |
+| `--version` | - | Print the version and exit. |
 
 ## Interpreting cuban plots
 
