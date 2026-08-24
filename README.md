@@ -66,15 +66,17 @@ On first use cuban downloads the RepeatMasker table (~40 MB, one time) to
 Each `--sample` is a colon-separated spec (so paths must not contain `:`):
 
 ```
-name:bam[:baseline_cov]
+name:bam
 ```
 
 - The sequencing technology (short-read vs long-read) is inferred from the
   read lengths in the BAM; long-read samples omit the insert-size and
   orientation tracks. To set it explicitly, pass `--tech SAMPLE:sr` or
   `--tech SAMPLE:lr` (repeatable, one per sample).
-- `baseline_cov`: the chromosome-average coverage drawn as the reference
-  line; `auto` (default) derives it from the BAM itself.
+- The baseline coverage (the horizontal reference line) is the chromosome's
+  mean depth, taken from the sample's own BAM via mosdepth. To override it,
+  pass `--baseline-cov SAMPLE:COV`, e.g. `--baseline-cov proband:32.5`
+  (repeatable, one per sample).
 
 BAMs must be indexed (`samtools index sample.bam`). Repeat `--sample` for
 a trio or family, each sample becomes one figure block:

@@ -26,18 +26,13 @@ def _bam_index_missing(bam):
 
 
 def _parse_sample_spec(spec, chrom):
-    """Parse `name:bam[:baseline_cov]`."""
+    """Parse `name:bam`."""
     parts = spec.split(':')
-    if len(parts) < 2:
+    if len(parts) != 2:
         raise argparse.ArgumentTypeError(
-            f"--sample {spec!r}: need at least name:bam, got {len(parts)} field(s)"
+            f"--sample {spec!r}: expected name:bam (the bam path must not contain a colon)"
         )
-    if len(parts) > 3:
-        raise argparse.ArgumentTypeError(
-            f"--sample {spec!r}: too many fields, expected name:bam[:baseline_cov]"
-        )
-    name, bam = parts[0], parts[1]
-    baseline_field = parts[2] if len(parts) > 2 and parts[2] else 'auto'
+    name, bam = parts
 
     if not os.path.isfile(bam):
         raise argparse.ArgumentTypeError(f"--sample {name}: BAM not found: {bam}")
@@ -47,20 +42,10 @@ def _parse_sample_spec(spec, chrom):
             f"Run: samtools index {bam}"
         )
 
-    if baseline_field == 'auto':
-        baseline_cov = 'auto'
-    else:
-        try:
-            baseline_cov = float(baseline_field)
-        except ValueError as e:
-            raise argparse.ArgumentTypeError(
-                f"--sample {name}: baseline_cov must be a float or 'auto', got {baseline_field!r}"
-            ) from e
-
     return name, {
-        'technology': None,  # resolved later: --tech override or inference
+        'technology': None,   # resolved later: --tech override or inference
         'bam_name': bam,
-        'baseline_cov': baseline_cov,
+        'baseline_cov': 'auto',  # resolved later: --baseline-cov override or mosdepth
     }
 
 
@@ -128,14 +113,18 @@ def _build_parser():
     parser.add_argument('--no-repeats', action='store_true',
                         help='render the repeat track empty without warning.')
     parser.add_argument('--sample', action='append', required=True,
-                        help='sample spec (repeatable): name:bam[:baseline_cov]. '
-                             'Fields are colon-separated, so the bam path must not contain a colon. '
-                             'The sequencing technology is inferred from the read lengths; '
-                             'use --tech to set it explicitly.')
+                        help='sample spec (repeatable): name:bam. The bam path must not '
+                             'contain a colon. The sequencing technology is inferred from '
+                             'the read lengths; use --tech to set it explicitly.')
     parser.add_argument('--tech', action='append', metavar='SAMPLE:TECH',
                         help='set the sequencing technology for a sample explicitly instead of '
                              'inferring it: SAMPLE:sr (short-read) or SAMPLE:lr (long-read). '
                              'Repeatable, one per sample.')
+    parser.add_argument('--baseline-cov', action='append', metavar='SAMPLE:COV',
+                        help='override the baseline coverage (the horizontal reference line) '
+                             'for a sample, e.g. PROBAND:32.5. Repeatable, one per sample. '
+                             "By default it is the chromosome's mean depth from the sample's "
+                             'own BAM (computed via mosdepth and cached).')
 
     parser.add_argument('-o', '--out', help='output PNG path. Required unless --vcf is given.')
     parser.add_argument('--padding', type=int, default=None,
@@ -353,6 +342,20 @@ def main(argv=None):
         if name in samples:
             raise SystemExit(f'duplicate --sample name: {name}')
         samples[name] = sample_dict
+
+    for item in args.baseline_cov or []:
+        sample_name, sep, cov = item.rpartition(':')
+        if not sep or sample_name not in samples:
+            raise SystemExit(
+                f"--baseline-cov {item!r}: expected SAMPLE:COV with SAMPLE one of "
+                f"{', '.join(samples)}"
+            )
+        try:
+            samples[sample_name]['baseline_cov'] = float(cov)
+        except ValueError as e:
+            raise SystemExit(
+                f"--baseline-cov {item!r}: COV must be a number, got {cov!r}"
+            ) from e
 
     tech_overrides = {}
     for item in args.tech or []:
