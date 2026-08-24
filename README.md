@@ -141,29 +141,36 @@ The bottom track shows the individual reads in two windows (default
 100 bp) around the two breakpoints. When reads carry `HP` tags (phased
 BAMs), they are grouped into labelled HP:1 / HP:2 / unassigned haplotype
 bands, and a per-read strand barcode (blue forward, red reverse) is drawn
-next to each panel. Colors encode the CIGAR operations of each read:
+next to each panel.
+
+**Colors** encode the CIGAR operation of each read segment:
 
 <table>
   <tr>
-    <td colspan="2" align="center"><img src="docs/img/read-normal.png" width="230"><br>normally aligned read</td>
-    <td colspan="2" align="center"><img src="docs/img/read-low-mapq.png" width="230"><br>low mapping quality (&lt; 30)</td>
-    <td colspan="2" align="center"><img src="docs/img/read-deletion.png" width="230"><br>deleted segment (blue)</td>
+    <td align="center"><img src="docs/img/read-normal.png" width="230"><br>normally aligned read</td>
+    <td align="center"><img src="docs/img/read-low-mapq.png" width="230"><br>low mapping quality (&lt; 30)</td>
+    <td align="center"><img src="docs/img/read-deletion.png" width="230"><br>deleted segment (blue)</td>
   </tr>
   <tr>
-    <td colspan="2" align="center"><img src="docs/img/read-insertion.png" width="230"><br>inserted segment (tan)</td>
-    <td colspan="2" align="center"><img src="docs/img/read-soft-clipped.png" width="230"><br>soft-clipped read (teal)</td>
-    <td colspan="2" align="center"><img src="docs/img/read-hard-clipped.png" width="230"><br>hard-clipped read (red)</td>
+    <td align="center"><img src="docs/img/read-insertion.png" width="230"><br>inserted segment (tan)</td>
+    <td align="center"><img src="docs/img/read-soft-clipped.png" width="230"><br>soft-clipped read (teal)</td>
+    <td align="center"><img src="docs/img/read-hard-clipped.png" width="230"><br>hard-clipped read (red)</td>
   </tr>
+</table>
+
+**Overlays** are drawn on top of reads and mark split alignments and
+read-pair orientation:
+
+<table>
   <tr>
-    <td colspan="2" align="center"><img src="docs/img/read-split-a.png" width="230"><br>split read (grid overlay)</td>
-    <td colspan="2" align="center"><img src="docs/img/read-split-b.png" width="230"><br>split read (grid overlay)</td>
+    <td colspan="2" align="center"><img src="docs/img/read-split-a.png" width="230"><br>split read (black grid)</td>
     <td colspan="2" align="center"><img src="docs/img/overlay-reverse-forward.png" width="230"><br>reverse-forward pair (dark blue)</td>
+    <td colspan="2" align="center"><img src="docs/img/overlay-reverse-reverse.png" width="230"><br>reverse-reverse pair (orange)</td>
   </tr>
   <tr>
-    <td></td>
-    <td colspan="2" align="center"><img src="docs/img/overlay-reverse-reverse.png" width="230"><br>reverse-reverse pair (orange)</td>
+    <td colspan="2"></td>
     <td colspan="2" align="center"><img src="docs/img/overlay-forward-forward.png" width="230"><br>forward-forward pair (cadet blue)</td>
-    <td></td>
+    <td colspan="2"></td>
   </tr>
 </table>
 
