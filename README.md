@@ -143,18 +143,34 @@ BAMs), they are grouped into labelled HP:1 / HP:2 / unassigned haplotype
 bands, and a per-read strand barcode (blue forward, red reverse) is drawn
 next to each panel. Colors encode the CIGAR operations of each read:
 
-| Appearance | Meaning |
-|---|---|
-| ![normal](docs/img/read-normal.png) light gray | normally aligned read |
-| ![low mapq](docs/img/read-low-mapq.png) dark gray | mapping quality < 30, the read aligns to multiple positions in the reference |
-| ![deletion](docs/img/read-deletion.png) blue | small deleted segment within the read |
-| ![insertion](docs/img/read-insertion.png) tan | small inserted segment within the read |
-| ![soft clip](docs/img/read-soft-clipped.png) teal | soft-clipped read: only part of the read aligns, the clipped part (teal) can indicate a breakpoint |
-| ![hard clip](docs/img/read-hard-clipped.png) red | hard-clipped read: as above, but the clipped bases are not stored in the BAM |
-| ![split a](docs/img/read-split-a.png) ![split b](docs/img/read-split-b.png) black grid overlay | split read: parts of the read align to two different positions |
-| ![rf](docs/img/overlay-reverse-forward.png) dark blue overlay | read pair in reverse-forward orientation |
-| ![rr](docs/img/overlay-reverse-reverse.png) orange overlay | read pair in reverse-reverse orientation |
-| ![ff](docs/img/overlay-forward-forward.png) cadet blue overlay | read pair in forward-forward orientation |
+<table>
+  <tr>
+    <td colspan="2" align="center"><img src="docs/img/read-normal.png" width="230"><br>normally aligned read</td>
+    <td colspan="2" align="center"><img src="docs/img/read-low-mapq.png" width="230"><br>low mapping quality (&lt; 30)</td>
+    <td colspan="2" align="center"><img src="docs/img/read-deletion.png" width="230"><br>deleted segment (blue)</td>
+  </tr>
+  <tr>
+    <td colspan="2" align="center"><img src="docs/img/read-insertion.png" width="230"><br>inserted segment (tan)</td>
+    <td colspan="2" align="center"><img src="docs/img/read-soft-clipped.png" width="230"><br>soft-clipped read (teal)</td>
+    <td colspan="2" align="center"><img src="docs/img/read-hard-clipped.png" width="230"><br>hard-clipped read (red)</td>
+  </tr>
+  <tr>
+    <td colspan="2" align="center"><img src="docs/img/read-split-a.png" width="230"><br>split read (grid overlay)</td>
+    <td colspan="2" align="center"><img src="docs/img/read-split-b.png" width="230"><br>split read (grid overlay)</td>
+    <td colspan="2" align="center"><img src="docs/img/overlay-reverse-forward.png" width="230"><br>reverse-forward pair (dark blue)</td>
+  </tr>
+  <tr>
+    <td></td>
+    <td colspan="2" align="center"><img src="docs/img/overlay-reverse-reverse.png" width="230"><br>reverse-reverse pair (orange)</td>
+    <td colspan="2" align="center"><img src="docs/img/overlay-forward-forward.png" width="230"><br>forward-forward pair (cadet blue)</td>
+    <td></td>
+  </tr>
+</table>
+
+Clipped (soft or hard) read ends mean only part of the read aligns to the
+reference, which can indicate a breakpoint; hard-clipped bases are not
+stored in the BAM. Split reads align in two different places and carry the
+black grid overlay on both segments.
 
 ### Read connections
 
