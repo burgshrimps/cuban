@@ -17,6 +17,10 @@ SV types (DEL, DUP, INS, INV, BND), and stacks any number of samples,
 short-read and long-read together, so trios and cohorts can be reviewed
 side by side.
 
+cuban pairs well with [dicast](https://github.com/burgshrimps/dicast), our
+machine learning method for detecting structural variants from short-read
+sequencing data.
+
 ![anatomy of a cuban figure](docs/img/figure-anatomy.png)
 
 ## Installation
