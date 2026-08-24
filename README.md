@@ -124,8 +124,6 @@ than the sequencing library was prepared with, so peaks of insert-size
 outliers (insert > 1 kb) at both breakpoints support a DEL/DUP call. This
 signal is only informative for variants larger than roughly 400-500 bp.
 
-![how discordant pairs and insert size outliers arise](docs/img/signal-schematics.png)
-
 ### Discordant read pairs
 
 With paired-end sequencing the first read of a pair is expected to align to
