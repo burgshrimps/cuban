@@ -44,20 +44,31 @@ def empty_repeats():
     return pd.DataFrame({c: pd.Series(dtype=d) for c, d in REPEATS_DTYPES.items()})
 
 
-def load_repeats(path=None):
+def load_repeats(path=None, auto_fetch=True):
     """Load the repeat annotation as a DataFrame.
 
     With path=None, searches the default locations; if nothing is found,
-    warns and returns an empty table (the repeat track renders empty).
+    the hg38 table is downloaded automatically (one time, ~40 MB). If the
+    download is impossible, warns and returns an empty table (the repeat
+    track renders empty).
     """
     if path is None:
         path = default_repeats_path()
-        if path is None:
-            warnings.warn(
-                "No repeat annotation found - the repeat track will be empty. "
-                "Run 'cuban-fetch-repeats' to download it (hg38), or pass "
-                "--repeats /path/to/file.tsv[.gz]."
+        if path is None and auto_fetch:
+            print(
+                "[cuban] no repeat annotation found; downloading the hg38 "
+                "table (~40 MB, one time)...", file=sys.stderr,
             )
+            try:
+                path = fetch_repeats(quiet=True)
+            except SystemExit as e:
+                warnings.warn(
+                    f"automatic download failed ({e}); the repeat track will "
+                    "be empty. Run 'cuban-fetch-repeats' once you are online, "
+                    "or pass --repeats /path/to/file.tsv[.gz]."
+                )
+                return empty_repeats()
+        elif path is None:
             return empty_repeats()
     if not os.path.isfile(path):
         raise SystemExit(f"repeats file not found: {path}")
@@ -73,8 +84,9 @@ def load_repeats(path=None):
         ) from e
 
 
-def fetch_repeats(dest=None, url=REPEATS_URL, quiet=False):
+def fetch_repeats(dest=None, url=None, quiet=False):
     """Download the repeat annotation to dest (default: ~/.cuban/)."""
+    url = url or REPEATS_URL
     dest = Path(dest) if dest else DATA_DIR / REPEATS_FILENAME
     dest.parent.mkdir(parents=True, exist_ok=True)
     tmp = dest.with_suffix(dest.suffix + ".part")

@@ -3,8 +3,8 @@
 Synthetic fixtures for trying cuban without a real BAM: `example.bam`/`example_hp.bam`
 (a 50 kb `chr1` region with a homozygous 5 kb deletion, the latter HP-tagged), `example.vcf`
 (three DEL/DUP records for batch mode), and `repeats.tsv`. Regenerate them with
-`python examples/make_example_data.py`. `example_figure.png` (the README hero image) was
-rendered from `example_hp.bam` with the command below.
+`python examples/make_example_data.py`. `example_figure.png` was rendered
+from `example_hp.bam` with the command below.
 
 ```bash
 # Single SV on example.bam
