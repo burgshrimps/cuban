@@ -85,8 +85,9 @@ def _build_parser():
     parser.add_argument('--version', action='version', version=f'cuban {__version__}')
 
     parser.add_argument('--sv-type', choices=SV_TYPES,
-                        help='SV type. BND requires --chrom-b/--start-b/--end-b '
-                             '(or pass --bnd instead, which implies BND).')
+                        help='SV type. Required unless --vcf is given. BND requires '
+                             '--chrom-b/--start-b/--end-b (or pass --bnd instead, '
+                             'which implies BND).')
     parser.add_argument('--bnd', action='store_true',
                         help='render two independent loci side by side (BND mode). '
                              'Implies --sv-type BND; conflicts with any other --sv-type.')
@@ -96,9 +97,9 @@ def _build_parser():
                         'Required unless --vcf is given.')
     parser.add_argument('--end', type=int, help='end position (1-based, inclusive). '
                         'Required unless --vcf is given.')
-    parser.add_argument('--chrom-b', help='chromosome of the second locus (--bnd only).')
-    parser.add_argument('--start-b', type=int, help='start position of the second locus (--bnd only).')
-    parser.add_argument('--end-b', type=int, help='end position of the second locus (--bnd only).')
+    parser.add_argument('--chrom-b', help='chromosome of the second locus. Required in BND mode.')
+    parser.add_argument('--start-b', type=int, help='start position of the second locus (1-based). Required in BND mode.')
+    parser.add_argument('--end-b', type=int, help='end position of the second locus (1-based, inclusive). Required in BND mode.')
 
     parser.add_argument('--vcf', help='VCF/BCF of structural variants to batch-render, one PNG per '
                         'record. Requires --outdir and at least one --sample; mutually exclusive '
@@ -112,10 +113,12 @@ def _build_parser():
                              'first use (~40 MB, kept in ~/.cuban).')
     parser.add_argument('--no-repeats', action='store_true',
                         help='render the repeat track empty without warning.')
-    parser.add_argument('--sample', action='append', required=True,
-                        help='sample spec (repeatable): name:bam. The bam path must not '
-                             'contain a colon. The sequencing technology is inferred from '
-                             'the read lengths; use --tech to set it explicitly.')
+    parser.add_argument('--sample', action='append', required=True, metavar='NAME:BAM',
+                        help='sample to render (required; repeat for multiple samples, one '
+                             'figure block each). The BAM must be indexed (.bai/.csi) and its '
+                             'path must not contain a colon. The sequencing technology '
+                             '(short-read vs long-read) is inferred from the read lengths; '
+                             'use --tech to set it explicitly.')
     parser.add_argument('--tech', action='append', metavar='SAMPLE:TECH',
                         help='set the sequencing technology for a sample explicitly instead of '
                              'inferring it: SAMPLE:sr (short-read) or SAMPLE:lr (long-read). '
@@ -133,14 +136,17 @@ def _build_parser():
     parser.add_argument('--window', type=int, default=100,
                         help='CIGAR window around each breakpoint (bp). Default 100.')
     parser.add_argument('--no-collapse-ins', dest='collapse_ins', action='store_false',
-                        help='do not collapse insertion runs into a single column.')
+                        help='do not collapse insertion runs into a single column of the read '
+                             'panel (collapsed by default so large insertions do not stretch it).')
     parser.add_argument('--sv-len', type=int, default=None,
-                        help='explicit SV length (used in the title; non-BND only).')
+                        help='explicit SV length shown in the figure title (non-BND only). '
+                             'Default: derived from --start/--end.')
     parser.add_argument('--cache-dir', default=None,
                         help='directory where mosdepth outputs are cached. '
                              'Default: $CUBAN_DATA_DIR/coverage or ~/.cuban/coverage.')
     parser.add_argument('--max-reads', type=int, default=5000,
-                        help='maximum number of reads per alignment matrix panel. Default 5000.')
+                        help='maximum number of reads per read panel; deeper regions are '
+                             'downsampled deterministically. Default 5000.')
     parser.add_argument('--bin-size', type=int, default=None,
                         help='coverage bin size in bp. Default: auto (1 for SVs <= 100 kb, '
                              'else ~size/2000; always 1 for BND).')
