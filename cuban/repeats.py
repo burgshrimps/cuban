@@ -1,6 +1,7 @@
 """Locating, loading and fetching the RepeatMasker annotation."""
 
 import gzip
+import json
 import os
 import shutil
 import sys
@@ -32,16 +33,68 @@ def _repo_root():
     return None
 
 
-def annot_dir():
-    """Where the repeat annotation is downloaded to: $CUBAN_DATA_DIR if set,
-    annot/ in the repo root when running from a checkout, ~/.cuban otherwise."""
-    env_dir = os.environ.get("CUBAN_DATA_DIR")
-    if env_dir:
-        return Path(env_dir)
+CONFIG_PATH = Path.home() / ".cuban" / "config.json"
+
+
+def _load_config():
+    try:
+        with open(CONFIG_PATH) as fh:
+            return json.load(fh)
+    except (OSError, ValueError):
+        return {}
+
+
+def _save_config(config):
+    CONFIG_PATH.parent.mkdir(parents=True, exist_ok=True)
+    with open(CONFIG_PATH, "w") as fh:
+        json.dump(config, fh, indent=2)
+
+
+def _suggested_annot_dir():
+    """The prefilled storage suggestion: annot/ in the repo root when running
+    from a checkout, ~/.cuban otherwise."""
     root = _repo_root()
     if root is not None:
         return root / "annot"
     return Path.home() / ".cuban"
+
+
+def annot_dir(ask=False):
+    """Where the repeat annotation is stored: $CUBAN_DATA_DIR if set, else the
+    location the user chose on first use (persisted in ~/.cuban/config.json).
+
+    With ask=True and no stored choice yet, the user is prompted once for the
+    location (prefilled with the suggestion; Enter confirms). In
+    non-interactive sessions the suggestion is used without asking.
+    """
+    env_dir = os.environ.get("CUBAN_DATA_DIR")
+    if env_dir:
+        return Path(env_dir)
+    config = _load_config()
+    stored = config.get("annot_dir")
+    if stored:
+        return Path(stored)
+    suggestion = _suggested_annot_dir()
+    if not ask:
+        return suggestion
+    if sys.stdin.isatty() and sys.stderr.isatty():
+        print(
+            "cuban stores a RepeatMasker annotation (~40 MB, downloaded once) "
+            "to show whether variants overlap repeat elements.", file=sys.stderr,
+        )
+        answer = input(f"Storage location [{suggestion}]: ").strip()
+        chosen = Path(answer).expanduser() if answer else suggestion
+    else:
+        chosen = suggestion
+        print(f"[cuban] storing the repeat annotation in {chosen} "
+              "(set CUBAN_DATA_DIR to change)", file=sys.stderr)
+    try:
+        chosen.mkdir(parents=True, exist_ok=True)
+    except OSError as e:
+        raise SystemExit(f"cannot create annotation directory {chosen}: {e}") from e
+    config["annot_dir"] = str(chosen)
+    _save_config(config)
+    return chosen
 
 
 def default_repeats_path():
@@ -49,6 +102,7 @@ def default_repeats_path():
     repo_resources = Path(__file__).resolve().parent.parent / "resources"
     candidates = [
         annot_dir() / REPEATS_FILENAME,
+        _suggested_annot_dir() / REPEATS_FILENAME,
         Path.home() / ".cuban" / REPEATS_FILENAME,
         repo_resources / REPEATS_FILENAME,
         repo_resources / "hg38_repeatmasker.tsv",
@@ -106,7 +160,7 @@ def load_repeats(path=None, auto_fetch=True):
 def fetch_repeats(dest=None, url=None, quiet=False):
     """Download the repeat annotation to dest (default: the annot directory)."""
     url = url or REPEATS_URL
-    dest = Path(dest) if dest else annot_dir() / REPEATS_FILENAME
+    dest = Path(dest) if dest else annot_dir(ask=True) / REPEATS_FILENAME
     dest.parent.mkdir(parents=True, exist_ok=True)
     tmp = dest.with_suffix(dest.suffix + ".part")
     if not quiet:
