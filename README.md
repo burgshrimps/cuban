@@ -38,6 +38,9 @@ pip install git+https://github.com/burgshrimps/cuban.git
 
 ## Usage
 
+*On first use cuban downloads the RepeatMasker table (~40 MB, one time) to
+`~/.cuban/` and reuses it from then on.*
+
 **Single variant, single sample:**
 
 ```bash
@@ -84,12 +87,6 @@ cuban --bnd --chrom chr1 --start 20000 --end 20001 \
       --chrom-b chr5 --start-b 90000 --end-b 90001 \
       --sample proband:proband.bam --out bnd.png
 ```
-
-To try cuban without your own data, [examples/README.md](examples/README.md)
-has commands for the bundled synthetic dataset.
-
-On first use cuban downloads the RepeatMasker table (~40 MB, one time) to
-`~/.cuban/` and reuses it from then on.
 
 ### Command line options
 
