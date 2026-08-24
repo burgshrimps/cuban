@@ -38,9 +38,10 @@ pip install git+https://github.com/burgshrimps/cuban.git
 
 ## Usage
 
-The commands below use the small synthetic example that ships with the repo
-(a homozygous 5 kb deletion). **Single variant mode** renders one SV from
-explicit coordinates:
+The first commands below are runnable as-is: they use the small synthetic
+example that ships with the repo (a homozygous 5 kb deletion).
+
+**Single variant, single sample:**
 
 ```bash
 cuban --sv-type DEL --chrom chr1 --start 20000 --end 25000 \
@@ -49,19 +50,8 @@ cuban --sv-type DEL --chrom chr1 --start 20000 --end 25000 \
       --out examples/output/example.png
 ```
 
-**Multi variant mode** renders every record of an SV VCF, one PNG per
-record named `<ID>.png`; already-rendered variants are skipped, so a batch
-can resume:
-
-```bash
-cuban --vcf examples/data/example.vcf --outdir examples/output \
-      --sample EXAMPLE:examples/data/example.bam \
-      --repeats examples/data/repeats.tsv
-```
-
-**Multi sample mode**: repeat `--sample` to stack several samples (e.g. a
-trio) into one figure, one block per sample. This works in both single
-variant and VCF mode:
+**Single variant, multiple samples** (repeat `--sample`; each sample
+becomes one block of the figure):
 
 ```bash
 cuban --sv-type DEL --chrom chr1 --start 1234500 --end 1239800 \
@@ -69,6 +59,35 @@ cuban --sv-type DEL --chrom chr1 --start 1234500 --end 1239800 \
       --sample mother:mother.bam \
       --sample father:father.bam \
       --out trio.png
+```
+
+**VCF, single sample** (one PNG per record, named `<ID>.png`;
+already-rendered variants are skipped, so a batch can resume):
+
+```bash
+cuban --vcf examples/data/example.vcf --outdir examples/output \
+      --sample EXAMPLE:examples/data/example.bam \
+      --repeats examples/data/repeats.tsv
+```
+
+**VCF, multiple samples:**
+
+```bash
+cuban --vcf variants.vcf --outdir plots/ \
+      --sample proband:proband.bam \
+      --sample mother:mother.bam \
+      --sample father:father.bam
+```
+
+**Visualizing BNDs**: breakpoint junctions render as two independent loci
+side by side. In VCF mode, BND records (all four breakend bracket
+notations) are handled automatically; in single variant mode, pass both
+loci explicitly:
+
+```bash
+cuban --bnd --chrom chr1 --start 20000 --end 20001 \
+      --chrom-b chr5 --start-b 90000 --end-b 90001 \
+      --sample proband:proband.bam --out bnd.png
 ```
 
 On first use cuban downloads the RepeatMasker table (~40 MB, one time) to
