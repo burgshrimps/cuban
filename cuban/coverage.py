@@ -44,16 +44,6 @@ def _find_mosdepth():
     return shutil.which('mosdepth')
 
 
-def _cache_root(cache_dir=None):
-    """ Resolves the root directory under which mosdepth outputs are cached. """
-    if cache_dir is not None:
-        return Path(cache_dir)
-    env_dir = os.environ.get('CUBAN_DATA_DIR')
-    if env_dir:
-        return Path(env_dir) / 'coverage'
-    return Path.home() / '.cuban' / 'coverage'
-
-
 def _bam_cache_key(bam_path):
     """ Stable cache key for a BAM file: sha1 of abspath+mtime+size, first 16 hex chars. """
     st = os.stat(bam_path)
@@ -61,9 +51,34 @@ def _bam_cache_key(bam_path):
     return hashlib.sha1(raw.encode()).hexdigest()[:16]
 
 
+_warned_cache_fallback = False
+
+
+def _cache_dir_for_bam(cache_dir, bam_path):
+    """ Resolves the directory that holds mosdepth output for one BAM. Default is a
+    cuban_coverage/ folder next to the BAM (like a .bai index, so the potentially large
+    per-base files stay on the same filesystem as the data and are shared across runs);
+    falls back to ~/.cuban/coverage when the BAM's directory is not writable.
+    An explicit cache_dir or $CUBAN_DATA_DIR overrides this. """
+    if cache_dir is not None:
+        return Path(cache_dir) / _bam_cache_key(bam_path)
+    env_dir = os.environ.get('CUBAN_DATA_DIR')
+    if env_dir:
+        return Path(env_dir) / 'coverage' / _bam_cache_key(bam_path)
+    bam_dir = Path(os.path.abspath(bam_path)).parent
+    if os.access(bam_dir, os.W_OK):
+        return bam_dir / 'cuban_coverage' / f'{Path(bam_path).name}.{_bam_cache_key(bam_path)[:8]}'
+    global _warned_cache_fallback
+    if not _warned_cache_fallback:
+        print(f'[cuban] {bam_dir} is not writable; caching coverage under '
+              f'{Path.home() / ".cuban" / "coverage"} instead', file=sys.stderr)
+        _warned_cache_fallback = True
+    return Path.home() / '.cuban' / 'coverage' / _bam_cache_key(bam_path)
+
+
 def _mosdepth_prefix(cache_dir, bam_path, chrom, minq):
     """ Cache-dir prefix (without suffixes) that mosdepth output for (bam, chrom, minq) lives under. """
-    root = _cache_root(cache_dir) / _bam_cache_key(bam_path)
+    root = _cache_dir_for_bam(cache_dir, bam_path)
     root.mkdir(parents=True, exist_ok=True)
     return root / f'{chrom}.q{minq}'
 
@@ -85,7 +100,7 @@ def _run_mosdepth(mosdepth_bin, prefix, bam_path, chrom, minq):
 def _mosdepth_prefix_binned(cache_dir, bam_path, chrom, minq, bin_size):
     """ Cache-dir prefix for the --by binned mosdepth run, distinct from the per-base prefix
     so binned and per-base outputs never collide in the cache. """
-    root = _cache_root(cache_dir) / _bam_cache_key(bam_path)
+    root = _cache_dir_for_bam(cache_dir, bam_path)
     root.mkdir(parents=True, exist_ok=True)
     return root / f'{chrom}.q{minq}.by{bin_size}'
 

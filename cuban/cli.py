@@ -142,8 +142,10 @@ def _build_parser():
                         help='explicit SV length shown in the figure title (non-BND only). '
                              'Default: derived from --start/--end.')
     parser.add_argument('--cache-dir', default=None,
-                        help='directory where mosdepth outputs are cached. '
-                             'Default: $CUBAN_DATA_DIR/coverage or ~/.cuban/coverage.')
+                        help='directory where mosdepth coverage output is cached. Default: a '
+                             "cuban_coverage/ folder next to each BAM (like a .bai index), or "
+                             '~/.cuban/coverage when the BAM directory is not writable; '
+                             '$CUBAN_DATA_DIR/coverage when that variable is set.')
     parser.add_argument('--max-reads', type=int, default=5000,
                         help='maximum number of reads per read panel; deeper regions are '
                              'downsampled deterministically. Default 5000.')
