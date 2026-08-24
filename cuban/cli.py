@@ -8,12 +8,14 @@ import re
 import pysam
 
 from .repeats import empty_repeats, load_repeats
+from .utils import infer_technology
 from .visualize import cuban, cuban_bnd
 
 _BND_MATE_RE = re.compile(r'[\[\]]([^\[\]:]+):(\d+)[\[\]]')
 
 SV_TYPES = ('DEL', 'DUP', 'INS', 'INV', 'BND')
-TECHS = ('ill', 'pb')
+# Public technology vocabulary (sr/lr) mapped to the internal 'ill'/'pb' values.
+TECH_ALIASES = {'sr': 'ill', 'ill': 'ill', 'lr': 'pb', 'pb': 'pb'}
 
 
 def _bam_index_missing(bam):
@@ -24,23 +26,19 @@ def _bam_index_missing(bam):
 
 
 def _parse_sample_spec(spec, chrom):
-    """Parse `name:tech:bam[:baseline_cov]`."""
+    """Parse `name:bam[:baseline_cov]`."""
     parts = spec.split(':')
-    if len(parts) < 3:
+    if len(parts) < 2:
         raise argparse.ArgumentTypeError(
-            f"--sample {spec!r}: need at least name:tech:bam, got {len(parts)} field(s)"
+            f"--sample {spec!r}: need at least name:bam, got {len(parts)} field(s)"
         )
-    if len(parts) > 4:
+    if len(parts) > 3:
         raise argparse.ArgumentTypeError(
-            f"--sample {spec!r}: too many fields, expected name:tech:bam[:baseline_cov]"
+            f"--sample {spec!r}: too many fields, expected name:bam[:baseline_cov]"
         )
-    name, tech, bam = parts[0], parts[1], parts[2]
-    baseline_field = parts[3] if len(parts) > 3 and parts[3] else 'auto'
+    name, bam = parts[0], parts[1]
+    baseline_field = parts[2] if len(parts) > 2 and parts[2] else 'auto'
 
-    if tech not in TECHS:
-        raise argparse.ArgumentTypeError(
-            f"--sample {name}: technology must be one of {TECHS}, got {tech!r}"
-        )
     if not os.path.isfile(bam):
         raise argparse.ArgumentTypeError(f"--sample {name}: BAM not found: {bam}")
     if _bam_index_missing(bam):
@@ -60,7 +58,7 @@ def _parse_sample_spec(spec, chrom):
             ) from e
 
     return name, {
-        'technology': tech,
+        'technology': None,  # resolved later: --tech override or inference
         'bam_name': bam,
         'baseline_cov': baseline_cov,
     }
@@ -70,23 +68,23 @@ _EXAMPLES = """\
 EXAMPLES:
   # Single deletion, one sample
   cuban --sv-type DEL --chrom chr1 --start 20000 --end 25000 \\
-        --sample proband:ill:sample.bam -o out.png
+        --sample proband:sample.bam -o out.png
 
   # Trio (one figure block per sample)
   cuban --sv-type DEL --chrom chr1 --start 20000 --end 25000 \\
-        --sample proband:ill:proband.bam \\
-        --sample mother:ill:mother.bam \\
-        --sample father:ill:father.bam \\
+        --sample proband:proband.bam \\
+        --sample mother:mother.bam \\
+        --sample father:father.bam \\
         -o trio.png
 
   # Breakpoint junction (BND), two independent loci
   cuban --bnd --chrom chr1 --start 20000 --end 20001 \\
         --chrom-b chr5 --start-b 90000 --end-b 90001 \\
-        --sample proband:ill:sample.bam -o bnd.png
+        --sample proband:sample.bam -o bnd.png
 
   # VCF batch mode: one PNG per record in --outdir
   cuban --vcf variants.vcf --outdir out/ \\
-        --sample proband:ill:sample.bam
+        --sample proband:sample.bam
 """
 
 
@@ -130,8 +128,14 @@ def _build_parser():
     parser.add_argument('--no-repeats', action='store_true',
                         help='render the repeat track empty without warning.')
     parser.add_argument('--sample', action='append', required=True,
-                        help='sample spec (repeatable): name:tech:bam[:baseline_cov]. '
-                             'Fields are colon-separated, so the bam path must not contain a colon.')
+                        help='sample spec (repeatable): name:bam[:baseline_cov]. '
+                             'Fields are colon-separated, so the bam path must not contain a colon. '
+                             'The sequencing technology is inferred from the read lengths; '
+                             'use --tech to set it explicitly.')
+    parser.add_argument('--tech', action='append', metavar='SAMPLE:TECH',
+                        help='set the sequencing technology for a sample explicitly instead of '
+                             'inferring it: SAMPLE:sr (short-read) or SAMPLE:lr (long-read). '
+                             'Repeatable, one per sample.')
 
     parser.add_argument('-o', '--out', help='output PNG path. Required unless --vcf is given.')
     parser.add_argument('--padding', type=int, default=None,
@@ -349,6 +353,29 @@ def main(argv=None):
         if name in samples:
             raise SystemExit(f'duplicate --sample name: {name}')
         samples[name] = sample_dict
+
+    tech_overrides = {}
+    for item in args.tech or []:
+        sample_name, sep, tech = item.rpartition(':')
+        if not sep or sample_name not in samples:
+            raise SystemExit(
+                f"--tech {item!r}: expected SAMPLE:TECH with SAMPLE one of "
+                f"{', '.join(samples)}"
+            )
+        if tech.lower() not in TECH_ALIASES:
+            raise SystemExit(
+                f"--tech {item!r}: technology must be 'sr' (short-read) or 'lr' (long-read)"
+            )
+        tech_overrides[sample_name] = TECH_ALIASES[tech.lower()]
+
+    for name, sample in samples.items():
+        if name in tech_overrides:
+            sample['technology'] = tech_overrides[name]
+        else:
+            sample['technology'] = infer_technology(sample['bam_name'])
+            label = 'long-read (lr)' if sample['technology'] == 'pb' else 'short-read (sr)'
+            print(f'[cuban] {name}: inferred {label} technology '
+                  f'(override with --tech {name}:sr|lr)')
 
     if args.vcf is not None:
         _run_vcf_batch(args, samples, rep_df)

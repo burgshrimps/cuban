@@ -294,6 +294,28 @@ def reorder_by_hp(aln_matrix_left, aux_dict_left,
     return aln_left_new, aux_left_new, aln_right_new, aux_right_new, bands_info
 
 
+def infer_technology(bam_filename, n=500):
+    """ Infers the sequencing technology from the first `n` primary alignments of a BAM.
+    Short-read libraries have uniform read lengths of a few hundred bp at most, while
+    long reads span kilobases, so a median read length above 500 bp classifies the
+    sample as long-read. Returns 'ill' (short-read) or 'pb' (long-read). """
+    lengths = []
+    with pysam.AlignmentFile(bam_filename) as bam:
+        for read in bam.fetch(until_eof=True):
+            if read.is_unmapped or read.is_secondary or read.is_supplementary:
+                continue
+            length = read.infer_read_length() or read.query_length
+            if length:
+                lengths.append(length)
+            if len(lengths) >= n:
+                break
+    if not lengths:
+        raise ValueError(
+            f"cannot infer sequencing technology for '{bam_filename}': no mapped reads found"
+        )
+    return 'pb' if float(np.median(lengths)) > 500 else 'ill'
+
+
 def compute_cov_df(bam_filename, chrom, start, stop, minq=20):
     """ Computes coverage for given region. Coverage is computed twice. Once for all reads and once for reads with
     mapping quality >= minq. """

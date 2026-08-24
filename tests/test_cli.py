@@ -23,7 +23,7 @@ def test_single_sv_del_render_writes_png(tmp_path, test_bam, repeats_tsv, shared
     argv = [
         "--sv-type", "DEL",
         "--chrom", contig, "--start", str(del_start), "--end", str(del_end),
-        "--sample", f"S1:ill:{test_bam}",
+        "--sample", f"S1:{test_bam}",
         "--repeats", str(repeats_tsv),
         "--out", str(out_png),
         "--cache-dir", str(shared_cache_dir),
@@ -40,7 +40,7 @@ def test_vcf_batch_renders_three_and_reruns_skip(tmp_path, test_bam, repeats_tsv
     argv = [
         "--vcf", str(test_vcf),
         "--outdir", str(outdir),
-        "--sample", f"S1:ill:{test_bam}",
+        "--sample", f"S1:{test_bam}",
         "--repeats", str(repeats_tsv),
         "--cache-dir", str(shared_cache_dir),
     ]
@@ -73,7 +73,7 @@ def test_bnd_without_b_locus_flags_names_missing_flags(tmp_path, test_bam, conti
     argv = [
         "--sv-type", "BND",
         "--chrom", contig, "--start", str(del_start), "--end", str(del_start),
-        "--sample", f"S1:ill:{test_bam}",
+        "--sample", f"S1:{test_bam}",
         "--out", str(tmp_path / "bnd.png"),
     ]
     code = run_cli(argv)
@@ -88,7 +88,7 @@ def test_bnd_conflicts_with_sv_type(tmp_path, test_bam, contig, del_start, del_e
         "--bnd", "--sv-type", "DEL",
         "--chrom", contig, "--start", str(del_start), "--end", str(del_end),
         "--chrom-b", contig, "--start-b", str(del_end), "--end-b", str(del_end),
-        "--sample", f"S1:ill:{test_bam}",
+        "--sample", f"S1:{test_bam}",
         "--out", str(tmp_path / "bnd.png"),
     ]
     code = run_cli(argv)
@@ -102,7 +102,7 @@ def test_vcf_conflicts_with_chrom(tmp_path, test_bam, test_vcf, contig):
         "--vcf", str(test_vcf),
         "--outdir", str(tmp_path / "out"),
         "--chrom", contig,
-        "--sample", f"S1:ill:{test_bam}",
+        "--sample", f"S1:{test_bam}",
     ]
     code = run_cli(argv)
     assert code is not None and code != 0
@@ -115,7 +115,7 @@ def test_no_repeats_renders_without_missing_repeats_warning(tmp_path, test_bam, 
     argv = [
         "--sv-type", "DEL",
         "--chrom", contig, "--start", str(del_start), "--end", str(del_end),
-        "--sample", f"S1:ill:{test_bam}",
+        "--sample", f"S1:{test_bam}",
         "--no-repeats",
         "--out", str(out_png),
         "--cache-dir", str(shared_cache_dir),

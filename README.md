@@ -42,7 +42,7 @@ The repo ships a small synthetic example (a homozygous 5 kb deletion):
 
 ```bash
 cuban --sv-type DEL --chrom chr1 --start 20000 --end 25000 \
-      --sample EXAMPLE:ill:examples/data/example.bam \
+      --sample EXAMPLE:examples/data/example.bam \
       --repeats examples/data/repeats.tsv \
       --out examples/output/example.png
 ```
@@ -52,7 +52,7 @@ Or render every record of a VCF in one go (one PNG per record, named
 
 ```bash
 cuban --vcf examples/data/example.vcf --outdir examples/output \
-      --sample EXAMPLE:ill:examples/data/example.bam \
+      --sample EXAMPLE:examples/data/example.bam \
       --repeats examples/data/repeats.tsv
 ```
 
@@ -66,11 +66,13 @@ On first use cuban downloads the RepeatMasker table (~40 MB, one time) to
 Each `--sample` is a colon-separated spec (so paths must not contain `:`):
 
 ```
-name:tech:bam[:baseline_cov]
+name:bam[:baseline_cov]
 ```
 
-- `tech`: `ill` (short-read) or `pb` (long-read). Long-read samples omit
-  the insert-size/orientation tracks.
+- The sequencing technology (short-read vs long-read) is inferred from the
+  read lengths in the BAM; long-read samples omit the insert-size and
+  orientation tracks. To set it explicitly, pass `--tech SAMPLE:sr` or
+  `--tech SAMPLE:lr` (repeatable, one per sample).
 - `baseline_cov`: the chromosome-average coverage drawn as the reference
   line; `auto` (default) derives it from the BAM itself.
 
@@ -79,9 +81,9 @@ a trio or family, each sample becomes one figure block:
 
 ```bash
 cuban --sv-type DEL --chrom chr1 --start 1234500 --end 1239800 \
-      --sample proband:ill:proband.bam \
-      --sample mother:ill:mother.bam \
-      --sample father:ill:father.bam \
+      --sample proband:proband.bam \
+      --sample mother:mother.bam \
+      --sample father:father.bam \
       --out trio.png
 ```
 
@@ -92,7 +94,7 @@ Translocations render as two independent loci side by side:
 ```bash
 cuban --bnd --chrom chr1 --start 20000 --end 20001 \
       --chrom-b chr5 --start-b 90000 --end-b 90001 \
-      --sample proband:ill:sample.bam --out bnd.png
+      --sample proband:sample.bam --out bnd.png
 ```
 
 In VCF mode, BND records are handled automatically (all four breakend
@@ -208,7 +210,8 @@ from cuban.repeats import load_repeats
 rep_df = load_repeats()          # auto-downloads the hg38 table on first use
 samples = {
     "SAMPLE_001": {
-        "technology": "ill",             # 'ill' or 'pb'
+        "technology": "ill",             # short-read 'ill' / long-read 'pb';
+                                         # cuban.utils.infer_technology(bam) infers it
         "bam_name": "SAMPLE_001.bam",    # must be indexed
         "baseline_cov": "auto",          # or an explicit float
     },

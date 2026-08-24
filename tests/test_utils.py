@@ -167,3 +167,35 @@ def test_compute_aln_matrix_insertion_at_position_zero_does_not_corrupt_last_col
     # The final reference-adjacent column must carry the deletion op (2), not a
     # corrupted sentinel/M value.
     assert aln_matrix[0, -1] == 2
+
+
+class TestInferTechnology:
+    def test_short_read_bam(self, test_bam):
+        from cuban.utils import infer_technology
+        assert infer_technology(str(test_bam)) == "ill"
+
+    def test_long_read_bam(self, tmp_path):
+        import random
+
+        import pysam
+
+        from cuban.utils import infer_technology
+
+        rng = random.Random(1)
+        header = {"HD": {"VN": "1.6", "SO": "coordinate"},
+                  "SQ": [{"SN": "chr1", "LN": 100_000}]}
+        path = tmp_path / "lr.bam"
+        with pysam.AlignmentFile(path, "wb", header=header) as bam:
+            for i in range(50):
+                a = pysam.AlignedSegment()
+                a.query_name = f"lr{i}"
+                a.reference_id = 0
+                a.reference_start = i * 100
+                a.mapping_quality = 60
+                length = rng.randint(3_000, 15_000)
+                a.query_sequence = "A" * length
+                a.cigarstring = f"{length}M"
+                a.flag = 0
+                bam.write(a)
+        pysam.index(str(path))
+        assert infer_technology(str(path)) == "pb"

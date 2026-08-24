@@ -51,7 +51,7 @@ jobs:
       - name: End-to-end render
         run: |
           cuban --sv-type DEL --chrom chr1 --start 20000 --end 25000 \
-                --sample TEST:ill:tests/data/test.bam \
+                --sample TEST:tests/data/test.bam \
                 --repeats tests/data/repeats.tsv \
                 --cache-dir ./cache --out ./smoke.png
           test -s smoke.png
