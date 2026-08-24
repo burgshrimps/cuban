@@ -9,8 +9,7 @@ structural variant (SV) calls. Given an SV (type + coordinates) and one or
 more BAM files, it renders all the read-level evidence for the call in a
 single multi-panel image: coverage, repeat elements, insert-size outliers,
 discordant read pairs, and the individual read alignments around both
-breakpoints, including haplotype grouping for phased BAMs. One look at the
-figure tells you whether the data actually supports the call. cuban is
+breakpoints, including haplotype grouping for phased BAMs. cuban is
 caller-agnostic (works from coordinates or any SV VCF), supports all five
 SV types (DEL, DUP, INS, INV, BND), and stacks any number of samples,
 short-read and long-read together, so trios and cohorts can be reviewed
