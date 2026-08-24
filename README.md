@@ -38,36 +38,31 @@ pip install git+https://github.com/burgshrimps/cuban.git
 
 ## Usage
 
-The first commands below are runnable as-is: they use the small synthetic
-example that ships with the repo (a homozygous 5 kb deletion).
-
 **Single variant, single sample:**
 
 ```bash
-cuban --sv-type DEL --chrom chr1 --start 20000 --end 25000 \
-      --sample EXAMPLE:examples/data/example.bam \
-      --repeats examples/data/repeats.tsv \
-      --out examples/output/example.png
+cuban --sv-type DEL --chrom chr2 --start 1234500 --end 1239800 \
+      --sample proband:proband.bam \
+      --out proband_del.png
 ```
 
 **Single variant, multiple samples** (repeat `--sample`; each sample
 becomes one block of the figure):
 
 ```bash
-cuban --sv-type DEL --chrom chr1 --start 1234500 --end 1239800 \
+cuban --sv-type DEL --chrom chr2 --start 1234500 --end 1239800 \
       --sample proband:proband.bam \
       --sample mother:mother.bam \
       --sample father:father.bam \
-      --out trio.png
+      --out trio_del.png
 ```
 
 **VCF, single sample** (one PNG per record, named `<ID>.png`;
 already-rendered variants are skipped, so a batch can resume):
 
 ```bash
-cuban --vcf examples/data/example.vcf --outdir examples/output \
-      --sample EXAMPLE:examples/data/example.bam \
-      --repeats examples/data/repeats.tsv
+cuban --vcf variants.vcf --outdir plots/ \
+      --sample proband:proband.bam
 ```
 
 **VCF, multiple samples:**
@@ -89,6 +84,9 @@ cuban --bnd --chrom chr1 --start 20000 --end 20001 \
       --chrom-b chr5 --start-b 90000 --end-b 90001 \
       --sample proband:proband.bam --out bnd.png
 ```
+
+To try cuban without your own data, [examples/README.md](examples/README.md)
+has commands for the bundled synthetic dataset.
 
 On first use cuban downloads the RepeatMasker table (~40 MB, one time) to
 `~/.cuban/` and reuses it from then on.
