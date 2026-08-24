@@ -224,10 +224,3 @@ cuban(samples, rep_df, sv_type="DEL",
 
 `cuban_bnd()` works analogously for breakpoint pairs. A worked, executed
 notebook is at [examples/cuban_examples.ipynb](examples/cuban_examples.ipynb).
-
-## Tests
-
-```bash
-pip install -e '.[test]'
-pytest tests/
-```
