@@ -24,16 +24,18 @@ def _bam_index_missing(bam):
 
 
 def _parse_sample_spec(spec, chrom):
-    """Parse `name:tech:bam[:baseline_cov[:family[:disease]]]`."""
+    """Parse `name:tech:bam[:baseline_cov]`."""
     parts = spec.split(':')
     if len(parts) < 3:
         raise argparse.ArgumentTypeError(
             f"--sample {spec!r}: need at least name:tech:bam, got {len(parts)} field(s)"
         )
+    if len(parts) > 4:
+        raise argparse.ArgumentTypeError(
+            f"--sample {spec!r}: too many fields, expected name:tech:bam[:baseline_cov]"
+        )
     name, tech, bam = parts[0], parts[1], parts[2]
     baseline_field = parts[3] if len(parts) > 3 and parts[3] else 'auto'
-    family_status = parts[4] if len(parts) > 4 and parts[4] else 'index'
-    disease_status = parts[5] if len(parts) > 5 and parts[5] else 'affected'
 
     if tech not in TECHS:
         raise argparse.ArgumentTypeError(
@@ -58,8 +60,6 @@ def _parse_sample_spec(spec, chrom):
             ) from e
 
     return name, {
-        'family_status': family_status,
-        'disease_status': disease_status,
         'technology': tech,
         'bam_name': bam,
         'baseline_cov': baseline_cov,
@@ -72,11 +72,11 @@ EXAMPLES:
   cuban --sv-type DEL --chrom chr1 --start 20000 --end 25000 \\
         --sample proband:ill:sample.bam -o out.png
 
-  # Trio (three samples with family/disease status fields)
+  # Trio (one figure block per sample)
   cuban --sv-type DEL --chrom chr1 --start 20000 --end 25000 \\
-        --sample proband:ill:proband.bam:auto:index:affected \\
-        --sample mother:ill:mother.bam:auto:mother:unaffected \\
-        --sample father:ill:father.bam:auto:father:unaffected \\
+        --sample proband:ill:proband.bam \\
+        --sample mother:ill:mother.bam \\
+        --sample father:ill:father.bam \\
         -o trio.png
 
   # Breakpoint junction (BND), two independent loci
@@ -130,7 +130,7 @@ def _build_parser():
     parser.add_argument('--no-repeats', action='store_true',
                         help='render the repeat track empty without warning.')
     parser.add_argument('--sample', action='append', required=True,
-                        help='sample spec (repeatable): name:tech:bam[:baseline_cov[:family[:disease]]]. '
+                        help='sample spec (repeatable): name:tech:bam[:baseline_cov]. '
                              'Fields are colon-separated, so the bam path must not contain a colon.')
 
     parser.add_argument('-o', '--out', help='output PNG path. Required unless --vcf is given.')
@@ -342,7 +342,10 @@ def main(argv=None):
 
     samples = {}
     for spec in args.sample:
-        name, sample_dict = _parse_sample_spec(spec, args.chrom)
+        try:
+            name, sample_dict = _parse_sample_spec(spec, args.chrom)
+        except argparse.ArgumentTypeError as e:
+            raise SystemExit(str(e)) from e
         if name in samples:
             raise SystemExit(f'duplicate --sample name: {name}')
         samples[name] = sample_dict

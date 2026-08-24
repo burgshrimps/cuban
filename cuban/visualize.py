@@ -624,7 +624,7 @@ def cuban(samples: dict, rep_df: pd.DataFrame, sv_type: str, chrom: str, start: 
     """ Visualizes alignment information around a structural variant for one or multiple samples.
 
     Args:
-        samples (dict): Dictionary containing sample information. Keys are sample names and values are dictionaries containing family status, disease status, BAM filename and baseline coverage.
+        samples (dict): Dictionary containing sample information. Keys are sample names and values are dictionaries containing technology, BAM filename and baseline coverage.
             'baseline_cov' may be a float or the string 'auto' (resolved per-chromosome at render time).
             'coverage_dir', if present, points at a precomputed mosdepth output directory for that sample.
         rep_df (pd.DataFrame): Repeat dataframe
@@ -672,8 +672,6 @@ def cuban(samples: dict, rep_df: pd.DataFrame, sv_type: str, chrom: str, start: 
         for sample in samples:
             ### Get sample info
             name = sample
-            family_status = samples[sample]['family_status']
-            disease_status = samples[sample]['disease_status']
             technology = samples[sample]['technology']
             bam_name = samples[sample]['bam_name']
             baseline_cov = samples[sample]['baseline_cov']
@@ -735,7 +733,7 @@ def cuban(samples: dict, rep_df: pd.DataFrame, sv_type: str, chrom: str, start: 
                 except ValueError:
                     ax_title.text(0.5, 0.5, sv_type + ' ' + chrom + ':' + add_comma_to_pos(start) + '-' + add_comma_to_pos(end) + ' (Unknown Length)', horizontalalignment='center', verticalalignment='center', fontsize=12, weight='bold')
                 plotted_main_title = True
-            ax_title.text(0.5, 0, name + ' (' + family_status.capitalize() + ', ' + disease_status.capitalize() + ')', horizontalalignment='center', verticalalignment='center', fontsize=12, weight='bold')
+            ax_title.text(0.5, 0, name, horizontalalignment='center', verticalalignment='center', fontsize=12, weight='bold')
             ax_title.axis('off')
     
         ### Save figure
@@ -756,7 +754,7 @@ def cuban_bnd(samples: dict, rep_df: pd.DataFrame, chromA: str, startA: int, end
     """ Visualizes alignment information around an SV for one or multiple samples for two loci independently.
 
     Args:
-        samples (dict): Dictionary containing sample information. Keys are sample names and values are dictionaries containing family status, disease status, BAM filename and baseline coverage.
+        samples (dict): Dictionary containing sample information. Keys are sample names and values are dictionaries containing technology, BAM filename and baseline coverage.
             'baseline_cov' may be a float or the string 'auto' (resolved separately for chromA and chromB at render time).
             'coverage_dir', if present, points at a precomputed mosdepth output directory for that sample.
         rep_df (pd.DataFrame): Repeat dataframe
@@ -808,8 +806,6 @@ def cuban_bnd(samples: dict, rep_df: pd.DataFrame, chromA: str, startA: int, end
         
             ### Get sample info
             name = sample
-            family_status = samples[sample]['family_status']
-            disease_status = samples[sample]['disease_status']
             technology = samples[sample]['technology']
             bam_name = samples[sample]['bam_name']
             baseline_cov = samples[sample]['baseline_cov']
@@ -896,7 +892,7 @@ def cuban_bnd(samples: dict, rep_df: pd.DataFrame, chromA: str, startA: int, end
             if not plotted_main_title:
                 axes_title.text(0.5, 0.5, sv_type + ' ' + chromA + ':' + add_comma_to_pos(startA) + ' <> ' + chromB + ':' + add_comma_to_pos(startB), horizontalalignment='center', verticalalignment='center', fontsize=12, weight='bold')
                 plotted_main_title = True
-            axes_title.text(0.5, 0, name + ' (' + family_status.capitalize() + ', ' + disease_status.capitalize() + ')', horizontalalignment='center', verticalalignment='center', fontsize=12, weight='bold')
+            axes_title.text(0.5, 0, name, horizontalalignment='center', verticalalignment='center', fontsize=12, weight='bold')
             axes_title.axis('off')
     
         ### Save figure

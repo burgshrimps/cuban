@@ -66,24 +66,22 @@ On first use cuban downloads the RepeatMasker table (~40 MB, one time) to
 Each `--sample` is a colon-separated spec (so paths must not contain `:`):
 
 ```
-name:tech:bam[:baseline_cov[:family_status[:disease_status]]]
+name:tech:bam[:baseline_cov]
 ```
 
 - `tech`: `ill` (short-read) or `pb` (long-read). Long-read samples omit
   the insert-size/orientation tracks.
 - `baseline_cov`: the chromosome-average coverage drawn as the reference
   line; `auto` (default) derives it from the BAM itself.
-- `family_status` / `disease_status`: annotate the figure title
-  (defaults: `index`, `affected`).
 
 BAMs must be indexed (`samtools index sample.bam`). Repeat `--sample` for
 a trio or family, each sample becomes one figure block:
 
 ```bash
 cuban --sv-type DEL --chrom chr1 --start 1234500 --end 1239800 \
-      --sample proband:ill:proband.bam:auto:index:affected \
-      --sample mother:ill:mother.bam:auto:mother:unaffected \
-      --sample father:ill:father.bam:auto:father:unaffected \
+      --sample proband:ill:proband.bam \
+      --sample mother:ill:mother.bam \
+      --sample father:ill:father.bam \
       --out trio.png
 ```
 
@@ -213,8 +211,6 @@ samples = {
         "technology": "ill",             # 'ill' or 'pb'
         "bam_name": "SAMPLE_001.bam",    # must be indexed
         "baseline_cov": "auto",          # or an explicit float
-        "family_status": "index",
-        "disease_status": "affected",
     },
 }
 cuban(samples, rep_df, sv_type="DEL",
