@@ -1,4 +1,4 @@
-# cuban
+![cuban](docs/img/cuban-banner.png)
 
 [![CI](https://github.com/burgshrimps/cuban/actions/workflows/ci.yml/badge.svg)](https://github.com/burgshrimps/cuban/actions/workflows/ci.yml)
 [![License: GPL-3.0](https://img.shields.io/badge/license-GPL--3.0-blue.svg)](LICENSE)
