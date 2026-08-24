@@ -9,8 +9,9 @@ authors:
   - family-names: Alavi
     given-names: Nico
 abstract: >-
-  cuban renders multi-panel figures of structural variants from BAM files:
-  coverage, repeat elements, insert-size outliers, discordant read pairs,
-  and per-read CIGAR alignments around the breakpoints.
+  cuban renders multi-panel figures for manually inspecting the sequencing
+  evidence behind structural variant calls: coverage, repeat elements,
+  insert-size outliers, discordant read pairs, and per-read CIGAR
+  alignments around the breakpoints, straight from BAM files.
 # TODO once published in Genome Biology: add preferred-citation with the
 # paper's authors, title, journal, year and DOI.

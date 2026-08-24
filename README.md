@@ -4,15 +4,17 @@
 [![License: GPL-3.0](https://img.shields.io/badge/license-GPL--3.0-blue.svg)](LICENSE)
 [![Python](https://img.shields.io/badge/python-3.10%2B-blue.svg)](pyproject.toml)
 
-**cuban** renders publication-quality, multi-panel figures of structural
-variants (SVs) directly from BAM files. Given an SV (type + coordinates) and
-one or more samples, it draws every read-level line of evidence in one
-image: coverage, repeat elements, insert-size outliers, discordant read
-pairs, and the individual read alignments around both breakpoints,
-including haplotype grouping for phased BAMs. It is caller-agnostic (works
-from coordinates or any SV VCF), supports all five SV types (DEL, DUP, INS,
-INV, BND), and stacks any number of samples, short-read and long-read
-together, into one figure.
+**cuban** is a tool for manually inspecting the sequencing evidence behind
+structural variant (SV) calls. Given an SV (type + coordinates) and one or
+more BAM files, it renders all the read-level evidence for the call in a
+single multi-panel image: coverage, repeat elements, insert-size outliers,
+discordant read pairs, and the individual read alignments around both
+breakpoints, including haplotype grouping for phased BAMs. One look at the
+figure tells you whether the data actually supports the call. cuban is
+caller-agnostic (works from coordinates or any SV VCF), supports all five
+SV types (DEL, DUP, INS, INV, BND), and stacks any number of samples,
+short-read and long-read together, so trios and cohorts can be reviewed
+side by side.
 
 ![anatomy of a cuban figure](docs/img/figure-anatomy.png)
 
