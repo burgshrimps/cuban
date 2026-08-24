@@ -15,8 +15,6 @@ REPEATS_URL = (
     "https://github.com/burgshrimps/cuban/releases/latest/download/"
     + REPEATS_FILENAME
 )
-DATA_DIR = Path(os.environ.get("CUBAN_DATA_DIR", Path.home() / ".cuban"))
-
 REPEATS_COLUMNS = ["genoName", "genoStart", "genoEnd", "repClass"]
 REPEATS_DTYPES = {
     "genoName": "category",
@@ -26,11 +24,32 @@ REPEATS_DTYPES = {
 }
 
 
+def _repo_root():
+    """The repo checkout the package runs from, or None for a site-packages install."""
+    root = Path(__file__).resolve().parent.parent
+    if (root / "pyproject.toml").is_file() and os.access(root, os.W_OK):
+        return root
+    return None
+
+
+def annot_dir():
+    """Where the repeat annotation is downloaded to: $CUBAN_DATA_DIR if set,
+    annot/ in the repo root when running from a checkout, ~/.cuban otherwise."""
+    env_dir = os.environ.get("CUBAN_DATA_DIR")
+    if env_dir:
+        return Path(env_dir)
+    root = _repo_root()
+    if root is not None:
+        return root / "annot"
+    return Path.home() / ".cuban"
+
+
 def default_repeats_path():
     """Return the first existing default location, or None."""
     repo_resources = Path(__file__).resolve().parent.parent / "resources"
     candidates = [
-        DATA_DIR / REPEATS_FILENAME,
+        annot_dir() / REPEATS_FILENAME,
+        Path.home() / ".cuban" / REPEATS_FILENAME,
         repo_resources / REPEATS_FILENAME,
         repo_resources / "hg38_repeatmasker.tsv",
     ]
@@ -85,9 +104,9 @@ def load_repeats(path=None, auto_fetch=True):
 
 
 def fetch_repeats(dest=None, url=None, quiet=False):
-    """Download the repeat annotation to dest (default: ~/.cuban/)."""
+    """Download the repeat annotation to dest (default: the annot directory)."""
     url = url or REPEATS_URL
-    dest = Path(dest) if dest else DATA_DIR / REPEATS_FILENAME
+    dest = Path(dest) if dest else annot_dir() / REPEATS_FILENAME
     dest.parent.mkdir(parents=True, exist_ok=True)
     tmp = dest.with_suffix(dest.suffix + ".part")
     if not quiet:
@@ -119,7 +138,7 @@ def fetch_main(argv=None):
     p = argparse.ArgumentParser(
         prog="cuban-fetch-repeats",
         description="Download the hg38 RepeatMasker annotation used by cuban "
-                    f"(~40 MB) to {DATA_DIR}/ (override with --dest or the "
+                    f"(~40 MB) to {annot_dir()}/ (override with --dest or the "
                     "CUBAN_DATA_DIR environment variable).",
     )
     p.add_argument("--dest", help="write the file to this path instead")
