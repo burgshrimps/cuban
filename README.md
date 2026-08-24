@@ -133,7 +133,7 @@ reverse-forward (dark blue), reverse-reverse (orange), and forward-forward
 (cadet blue) orientation; the dashed red line shows reads whose mate maps
 to a different chromosome. Duplications typically produce reverse-forward
 pairs around the breakpoints; inversions produce reverse-reverse and
-forward-forward pairs. For deletions this track is not informative.
+forward-forward pairs.
 
 ### Read alignments
 
