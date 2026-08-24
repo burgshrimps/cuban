@@ -38,9 +38,8 @@ pip install git+https://github.com/burgshrimps/cuban.git
 
 ## Usage
 
-*On first use cuban downloads the RepeatMasker table (~40 MB, one time)
-into the repo's `annot/` folder and reuses it from then on (`~/.cuban/`
-when cuban is installed without a checkout).*
+*On first use cuban downloads the RepeatMasker table (~40 MB, one time) to
+`~/.cuban/` and reuses it from then on.*
 
 **Single variant, single sample:**
 

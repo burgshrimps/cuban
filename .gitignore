@@ -17,6 +17,3 @@ dist/
 
 # macOS
 .DS_Store
-
-# Downloaded annotation
-annot/

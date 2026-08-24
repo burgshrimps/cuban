@@ -109,8 +109,7 @@ def _build_parser():
                         help='RepeatMasker TSV[.gz] with UCSC rmsk columns '
                              '(genoName/genoStart/genoEnd/repClass). Without this '
                              'flag the hg38 table is downloaded automatically on '
-                             'first use (~40 MB, kept in annot/ in the repo, or '
-                             '~/.cuban for installs without a checkout).')
+                             'first use (~40 MB, kept in ~/.cuban).')
     parser.add_argument('--no-repeats', action='store_true',
                         help='render the repeat track empty without warning.')
     parser.add_argument('--sample', action='append', required=True,
