@@ -56,20 +56,8 @@ cuban --vcf examples/data/example.vcf --outdir examples/output \
       --repeats examples/data/repeats.tsv
 ```
 
-Two things happen automatically on real data:
-
-- **Coverage** is computed with mosdepth whenever it is installed (the
-  conda environment includes it), restricted to the needed chromosome and
-  cached in `~/.cuban/coverage`, so repeated renders and VCF batches are
-  fast. Without mosdepth, cuban falls back to a slower built-in method.
-- **Repeat annotation**: on hg38 data you can simply omit `--repeats`. On
-  first use cuban downloads the RepeatMasker table (~40 MB, one time) to
-  `~/.cuban/` and reuses it from then on. The example commands above pass a
-  tiny bundled table instead because the example data is synthetic. For
-  another genome, build a table with
-  [scripts/build_repeats.py](scripts/build_repeats.py)
-  (e.g. `python scripts/build_repeats.py --genome hg19 -o hg19_repeats.tsv.gz`)
-  and pass it via `--repeats`; `--no-repeats` disables the track.
+On first use cuban downloads the RepeatMasker table (~40 MB, one time) to
+`~/.cuban/` and reuses it from then on.
 
 ## Usage
 
