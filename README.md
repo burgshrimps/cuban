@@ -114,18 +114,7 @@ leave coverage flat.
 
 Repetitive sequence affects read alignment and variant detection, so all
 annotated repeat elements near the SV are drawn under the coverage track,
-one row per class:
-
-| Repeat class    | Color                    |
-|-----------------|--------------------------|
-| LINE            | teal (`#6ac0b7`)         |
-| SINE            | tan (`#b7954b`)          |
-| LTR             | orange (`#f0b6a0`)       |
-| DNA             | blue (`#5066a2`)         |
-| Simple_repeat   | purple (`#504669`)       |
-| Satellite       | red (`#df624c`)          |
-| Low_complexity  | green (`#61856b`)        |
-| Retroposon      | dark green (`#2f7155`)   |
+one row per class.
 
 ### Insert size outliers
 
