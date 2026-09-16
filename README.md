@@ -196,6 +196,17 @@ are placed correctly. Red dashed lines join the two mates of a read pair
 enough for the windows to overlap); for larger variants they play the same
 role as the insert-size track, showing pairs that span the variant.
 
+## Use with AI coding agents
+
+The repository ships an [Agent Skill](https://agentskills.io) that teaches
+Claude Code and Codex how to run cuban and read its figures. Inside a clone
+of the repo both tools pick it up automatically (Claude Code from
+`.claude/skills/cuban`, Codex from `.agents/skills/cuban`), so you can ask
+for example *"plot the deletion at chr2:1,234,500-1,239,800 in proband.bam"*
+or *"render every SV in calls.vcf for the trio and tell me which ones look
+real"*. To use it from other projects, copy or symlink `.agents/skills/cuban`
+into `~/.claude/skills/` (Claude Code) or `~/.codex/skills/` (Codex).
+
 ## Python API
 
 ```python
